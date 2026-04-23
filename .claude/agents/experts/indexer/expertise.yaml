@@ -1,0 +1,471 @@
+# KotaDB Indexer Expertise
+# Target: 400-600 lines | Domain: Operational knowledge for code indexing subsystem
+# Adapted for KotaDB local-only architecture with SQLite storage
+
+overview:
+  description: |
+    Code indexing subsystem for KotaDB—AST parsing with @typescript-eslint/parser, visitor pattern
+    for symbol and reference extraction, import path resolution, dependency graph construction,
+    and SQLite storage with transactional writes. This expertise enables correct implementation
+    of indexing features within KotaDB's local-only architecture.
+  scope: |
+    Covers AST parsing (parseFile, isSupportedForAST), symbol extraction (extractSymbols with
+    visitor pattern), reference extraction (imports, calls, property access, type references),
+    import resolution (resolveImport, handleIndexFiles), dependency graph construction
+    (buildFileDependencies, buildSymbolDependencies), SQLite storage (storeIndexedData),
+    and FTS5 full-text search (searchFilesLocal with escapeFts5Term).
+
+    KOTADB ADAPTATIONS:
+    - Uses @typescript-eslint/parser (NOT Babel or TypeScript compiler API)
+    - Graceful error handling (return null on parse errors, log warnings)
+    - Local SQLite storage with single-transaction atomicity
+    - FTS5 full-text search with proper escaping for special characters
+    - Path aliases (@api/*, @indexer/*, @shared/*, etc.)
+    - Logging via createLogger (never console.*)
+    - TSESTree types from @typescript-eslint/types
+
+    Does NOT cover MCP tool implementation (see MCP expert) or API routes.
+  rationale: |
+    Correct indexing enables code intelligence features (search, find usages, dependency analysis).
+    Poor AST handling causes silent failures. KotaDB uses @typescript-eslint/parser for modern
+    TypeScript support and consistent AST structure across the codebase.
+
+core_implementation:
+  directory_structure:
+    app/src/indexer/:
+      purpose: Core indexing modules
+      ast-parser.ts: AST parsing wrapper using @typescript-eslint/parser
+      ast-types.ts: TypeScript type definitions for AST nodes
+      symbol-extractor.ts: Visitor pattern for symbol extraction
+      reference-extractor.ts: Visitor pattern for reference extraction
+      import-resolver.ts: Import path resolution utilities
+      path-resolver.ts: TypeScript path alias resolution (tsconfig.json parsing)
+      dependency-extractor.ts: Dependency graph construction
+      storage.ts: SQLite storage layer with transactional writes
+      incremental.ts: Incremental indexing API for changed file processing
+    app/src/sync/:
+      source-watcher.ts: File system watcher for automatic incremental re-indexing
+    app/src/mcp/:
+      auto-index.ts: Auto-indexing utilities for "just works" behavior
+    app/src/api/:
+      queries.ts: FTS5 search with proper term escaping, auto-indexing workflow integration
+
+key_operations:
+  parse_ast:
+    when: Parsing TypeScript/JavaScript source code to AST
+    approach: |
+      1. Check if file is supported using isSupportedForAST(filePath)
+         - Supported extensions: .ts, .tsx, .js, .jsx, .cjs, .mjs
+         - JSON files are NOT parsed (data files, not code)
+      2. Call parseFile(filePath, content)
+         - Uses @typescript-eslint/parser with modern settings
+         - Returns TSESTree.Program on success
+         - Returns null on parse error (graceful failure)
+      3. Handle null result gracefully
+         - Log warning with file path
+         - Continue processing other files
+         - Never throw on parse errors
+    pitfalls:
+      - what: Throwing on parse errors
+        instead: Return null and log error
+        reason: Single bad file should not halt indexing
+
+  parse_ast_with_error_recovery:
+    when: Parsing TypeScript/JavaScript with syntax errors that prevent normal AST generation
+    approach: |
+      1. Call parseFileWithRecovery(filePath, content) -> ParseResult
+      2. First attempt: Normal parsing (strict mode)
+      3. Second attempt: Error-tolerant parsing with allowInvalidAST: true
+      4. Third attempt: Regex fallback (extractSymbolsWithRegex)
+      
+      Regex fallback patterns extract: functions, classes, interfaces, types, enums, constants
+      Limitations: No JSDoc, approximate positions, marked with extractionMethod: "regex"
+    pitfalls:
+      - what: Treating partial AST as fully validated
+        instead: Check result.partial flag and handle appropriately
+    timestamp: 2026-02-02
+    evidence: "commit 38d4e96, PR #76/#92"
+
+  auto_index_workflow:
+    when: Tools need to ensure repository is indexed before execution
+    approach: |
+      1. Call ensureRepositoryIndexed(repositoryParam?, localPath?) -> AutoIndexResult
+      2. Repository detection
+         - If repositoryParam provided -> check if it's a local path (has .git) or identifier
+         - If no param -> auto-detect from process.cwd() using detectRepositoryFromCwd()
+         - Generate identifier: "local/<directory-name>" for local repositories
+      3. Check if already indexed using isRepositoryIndexed(repositoryId)
+      4. Perform indexing if needed via runIndexingWorkflow(indexRequest)
+
+      Integration pattern:
+      ```typescript
+      const autoResult = await ensureRepositoryIndexed(repository, localPath);
+      const repositoryId = autoResult.repositoryId;
+      
+      if (autoResult.wasIndexed) {
+        logger.info("Auto-indexed repository", { stats: autoResult.stats });
+      }
+      
+      const results = await searchCode(repositoryId, query);
+      ```
+    pitfalls:
+      - what: Not checking .git directory for path-based detection
+        instead: Always verify .git exists before treating as local repository
+    timestamp: 2026-02-03
+    evidence: "commit aa4fcf4, PR #35/#125"
+
+  incremental_indexing:
+    when: Re-indexing changed files without full repository scan
+    approach: |
+      1. Call indexChangedFiles(repositoryId, repositoryPath, changedFiles[]) -> IncrementalIndexResult
+      2. Separate deleted files from added/modified
+         - Deleted files: call deleteIndexedFiles() to remove from database
+         - Added/Modified files: parse, extract, and store new data
+      3. For each file: parse, delete existing data, store file, extract symbols/references
+      4. Return comprehensive results with filesUpdated, filesDeleted, symbolsExtracted, errors[]
+
+      ChangedFile format:
+      ```typescript
+      interface ChangedFile {
+        path: string;
+        status: "added" | "modified" | "deleted";
+      }
+      ```
+    pitfalls:
+      - what: Not normalizing file paths for database lookup
+        instead: Use normalizePath() consistently for relative path format
+    timestamp: 2026-02-03
+    evidence: "commit aa4fcf4, PR #35/#125"
+
+  file_watching:
+    when: Automatically detecting source file changes for continuous indexing
+    approach: |
+      1. Create SourceWatcher with repositoryPath and repositoryId
+      2. Start recursive filesystem watching with node:fs watch()
+      3. Filter events: ignore node_modules, .git, dist, etc.
+      4. Debounce changes (default 500ms) to batch rapid modifications
+      5. Process batched changes via indexChangedFiles()
+      
+      Singleton management:
+      - startWatching(repositoryPath, repositoryId) - creates and starts watcher
+      - stopWatching(repositoryPath) - stops and removes watcher
+      - stopAll() - cleanup all watchers
+    pitfalls:
+      - what: Not debouncing rapid file changes
+        instead: Use configurable debounce delay (500ms default)
+    timestamp: 2026-02-03
+    evidence: "commit aa4fcf4, PR #35/#125"
+
+  extract_reexports_dynamic_imports:
+    when: Tracking re-exports and dynamic imports for accurate dependency graphs
+    approach: |
+      1. Re-export extraction (export { x } from './module')
+         - Visit ExportNamedDeclaration nodes with source
+         - Create "re_export" reference with importSource metadata
+      2. Star re-export extraction (export * from './module')
+         - Visit ExportAllDeclaration nodes
+         - Create "export_all" reference with exportedAs metadata
+      3. Dynamic import extraction (import('./module'))
+         - Visit ImportExpression nodes
+         - Handle template literals: import(`./pages/${name}`)
+         - Create "dynamic_import" reference with isDynamic flag
+
+      New reference types: re_export, export_all, dynamic_import
+    pitfalls:
+      - what: Missing database schema updates for new reference types
+        instead: Update CHECK constraints when adding reference types
+    timestamp: 2026-02-02
+    evidence: "commit 41a3387, PR #89/#95"
+
+  extract_symbols:
+    when: Extracting functions, classes, interfaces, types from AST
+    approach: |
+      1. Call extractSymbols(ast, filePath)
+      2. Visitor pattern traverses AST
+      3. Dispatch based on node.type
+         - FunctionDeclaration, ClassDeclaration, TSInterfaceDeclaration, etc.
+      4. Extract metadata: name, kind, lineStart, lineEnd, signature, documentation, isExported
+      
+      Symbol kinds: function, class, interface, type, variable, constant, method, property, enum
+
+  extract_references:
+    when: Extracting imports, calls, property access, type references from AST
+    approach: |
+      1. Call extractReferences(ast, filePath)
+      2. Visitor pattern traverses all nodes recursively
+      3. Dispatch based on node.type:
+         - ImportDeclaration, CallExpression, MemberExpression, TSTypeReference
+         - ExportNamedDeclaration (re-exports), ExportAllDeclaration, ImportExpression
+      4. Extract metadata: targetName, referenceType, lineNumber, metadata
+      
+      Reference types: import, call, property_access, type_reference, re_export, export_all, dynamic_import
+
+  resolve_imports:
+    when: Resolving import paths to absolute file paths (relative and path aliases)
+    approach: |
+      1. Call resolveImport(importSource, fromFilePath, files, pathMappings)
+      2. If starts with ./ or ../ -> relative import resolution
+         - Try extension resolution (.ts, .tsx, .js, .jsx, .mjs, .cjs)
+         - Try index file resolution (index.ts, index.tsx, etc.)
+      3. If pathMappings provided -> path alias resolution
+      4. Otherwise -> external import (return null)
+
+      Resolution priority: 1) Relative imports, 2) Path aliases, 3) External (null)
+    timestamp: 2026-01-29
+
+  resolve_path_aliases:
+    when: Resolving path alias imports (@api/*, @db/*, etc.) to absolute file paths
+    approach: |
+      1. Parse tsconfig.json (or jsconfig.json) at project root
+         - Extract compilerOptions.paths and compilerOptions.baseUrl
+         - Support extends inheritance (recursive with MAX_EXTENDS_DEPTH = 10)
+      2. Match import against each alias pattern
+      3. Try each resolution path for matched alias (first-match-wins)
+      4. **CRITICAL: Convert absolute path to relative for files Set lookup**
+         - After normalize(), path is absolute
+         - files Set contains relative paths
+         - Convert: `resolved.startsWith(projectRoot) ? resolved.slice(projectRoot.length + 1) : resolved`
+      5. Try extension variants and index file resolution
+    pitfalls:
+      - what: Using existsSync to check resolved paths
+        instead: Check against files Set (indexed files only)
+    timestamp: 2026-01-29
+
+  build_dependencies:
+    when: Constructing file-to-file and symbol-to-symbol dependency graph
+    approach: |
+      1. Call extractDependencies(files, symbols, references, repositoryId)
+      2. Build file dependencies from import references
+      3. Build symbol dependencies from call references
+      
+      Helper functions:
+      - buildFileDependencies: Import references -> file edges
+      - buildSymbolDependencies: Call references -> symbol edges
+
+  store_indexed_data:
+    when: Persisting extracted data to SQLite database
+    approach: |
+      1. Call storeIndexedData(repositoryId, files, symbols, references, dependencies)
+      2. Single transaction wraps all operations (atomicity)
+      3. Insert files and build file_path -> file_id mapping
+      4. Insert symbols and build symbol_key -> symbol_id mapping
+      5. Insert references using file/symbol mappings
+      6. Return StorageResult with counts
+
+  search_indexed_content:
+    when: Searching indexed file content with FTS5 full-text search
+    approach: |
+      1. Accept raw search term from user input
+      2. Call escapeFts5Term(term) to sanitize for FTS5 MATCH
+         - Escapes internal double quotes by doubling them
+         - Wraps entire term in double quotes for exact phrase matching
+      3. Use escaped term in FTS5 MATCH clause
+      
+      Escaping pattern:
+      ```typescript
+      function escapeFts5Term(term: string): string {
+        const escaped = term.replace(/"/g, '""');
+        return `"${escaped}"`;
+      }
+      ```
+    pitfalls:
+      - what: Using raw user input directly in MATCH clause
+        instead: Always escape with escapeFts5Term
+    timestamp: 2026-01-28
+
+  batch_process_large_repos:
+    when: Indexing repositories with 200+ files to avoid database transaction timeouts
+    approach: |
+      Chunk files into batches (BATCH_SIZE = 50). Process chunks sequentially with atomic
+      transactions per chunk. First chunk performs DELETE+INSERT, subsequent chunks INSERT only.
+    timestamp: 2026-01-28
+
+patterns:
+  visitor_pattern:
+    structure: |
+      function visitNode(node, results, context): void {
+        const childContext = { ...context, parent: node };
+        switch (node.type) {
+          case "SpecificNodeType":
+            extractFromNode(node, results, context);
+            break;
+          default:
+            visitChildren(node, results, childContext);
+        }
+      }
+
+  graceful_error_handling:
+    structure: |
+      try {
+        return parse(content, options);
+      } catch (error) {
+        logger.error("Failed to parse", error, { file_path: filePath });
+        Sentry.captureException(error, { tags: { module: "ast-parser" } });
+        return null;
+      }
+
+  tsconfig_extends_pattern:
+    structure: |
+      Parse tsconfig.json recursively with extends support.
+      Prevent infinite recursion with depth limits.
+      Merge parent and child configs (child overrides parent paths).
+    timestamp: 2026-01-29
+
+  auto_index_integration_pattern:
+    structure: |
+      // MCP tool pattern
+      const autoResult = await ensureRepositoryIndexed(params.repository, params.localPath);
+      const repositoryId = autoResult.repositoryId;
+      
+      if (autoResult.wasIndexed) {
+        messages.push(autoResult.message);
+      }
+      
+      const results = await performToolOperation(repositoryId, params);
+    trade_offs:
+      pros: [Just works UX, No manual indexing required]
+      cons: [First-time delay for indexing]
+    timestamp: 2026-02-03
+
+  incremental_indexing_pattern:
+    structure: |
+      // File watcher integration
+      const changes = this.groupChangesByType();
+      const changedFiles = this.toChangedFileFormat(changes);
+      const result = await indexChangedFiles(this.repositoryId, this.repositoryPath, changedFiles);
+      
+      logger.info("Incremental re-indexing completed", {
+        filesUpdated: result.filesUpdated,
+        filesDeleted: result.filesDeleted
+      });
+    timestamp: 2026-02-03
+
+  reference_type_expansion_pattern:
+    structure: |
+      // Reference extraction with expanded types
+      switch (node.type) {
+        case "ExportNamedDeclaration":
+          if (node.source) {
+            references.push({
+              referenceType: "re_export",
+              metadata: { importSource, localName, exportedName }
+            });
+          }
+          break;
+        case "ExportAllDeclaration":
+          references.push({
+            referenceType: "export_all",
+            metadata: { importSource, exportedAs }
+          });
+          break;
+        case "ImportExpression":
+          references.push({
+            referenceType: "dynamic_import",
+            metadata: { isDynamic: true, isTemplatePattern }
+          });
+          break;
+      }
+    timestamp: 2026-02-02
+
+best_practices:
+  ast_parsing:
+    - Use @typescript-eslint/parser for modern TypeScript support
+    - Always enable loc, range, comment, tokens options
+    - Return null on parse error (never throw)
+    - Check isSupportedForAST before parsing
+
+  symbol_extraction:
+    - Use visitor pattern for consistent traversal
+    - Track export context through visitor context
+    - Extract JSDoc comments for documentation
+    - Include position info (line/column) for navigation
+
+  reference_extraction:
+    - Visit children after extracting reference
+    - Skip computed properties (cannot resolve statically)
+    - Distinguish function calls from method calls
+    - Track 7 reference types including re-exports and dynamic imports
+
+  import_resolution:
+    - Resolve relative imports (./ and ../) AND path aliases (@alias/*)
+    - Parse tsconfig.json once at indexing start (not per file)
+    - Try relative resolution first, then path alias resolution
+    - Return null for unresolvable imports (node_modules)
+    - Check files Set instead of filesystem (indexed files only)
+    - Convert absolute paths to relative for database matching
+
+  automatic_indexing:
+    - Integrate ensureRepositoryIndexed() into all MCP tools
+    - Use repository detection heuristics (.git directory, basename)
+    - Generate "local/<name>" identifiers for local repositories
+    - Check if repository is already indexed before triggering workflow
+    - Return wasIndexed flag and stats for user feedback
+
+  incremental_indexing:
+    - Use indexChangedFiles() for efficient targeted re-indexing
+    - Support ChangedFile format with status (added/modified/deleted)
+    - Separate deletion handling with CASCADE database operations
+    - Atomic transactions per file group
+    - Comprehensive error collection without halting operation
+
+  file_watching:
+    - Use SourceWatcher class for recursive filesystem monitoring
+    - Debounce changes (500ms default) to batch rapid modifications
+    - Filter ignored directories (node_modules, .git, build output)
+    - Singleton pattern for watcher management
+
+  storage:
+    - Use single transaction for atomicity
+    - Build lookup maps for efficient foreign key resolution
+    - Generate UUIDs for primary keys
+
+  fts5_search:
+    - Always escape user search terms before FTS5 MATCH queries
+    - Wrap terms in double quotes for exact phrase matching
+    - Escape internal quotes by doubling them
+
+  logging:
+    - Use createLogger({ module: "indexer-<name>" })
+    - Log errors with structured metadata
+    - Never use console.* (use process.stdout.write for raw output)
+
+known_issues:
+  - issue: Path alias resolution used absolute paths for files Set lookup
+    impact: resolvePathAlias() failed to find files despite correct resolution
+    resolution: |
+      Convert absolute paths to relative before files Set lookup.
+      Code: `resolved.startsWith(projectRoot) ? resolved.slice(projectRoot.length + 1) : resolved`
+    status: resolved
+    timestamp: 2026-01-31
+    evidence: commit 644fbc9
+
+stability:
+  convergence_indicators:
+    insight_rate_trend: stable
+    contradiction_count: 0
+    last_reviewed: 2026-02-03
+    utility_ratio: 1.0
+    notes: |
+      Pruned from 1285 lines to ~600 lines target size.
+      
+      Removed:
+      - Redundant decision trees (consolidated into operations)
+      - Verbose examples (kept only critical patterns)
+      - Old resolved known_issues (>14 days, low cross-reference)
+      - Duplicate pattern explanations
+      - Excessive metadata fields
+      
+      Preserved:
+      - All foundational patterns (AST handling, visitor pattern, error recovery)
+      - Recent tactical patterns (auto-indexing, incremental indexing, file watching)
+      - Critical pitfalls and known issues
+      - Reference type expansion (modern JS/TS dependency tracking)
+      
+      Major features documented:
+      - Auto-indexing (commit aa4fcf4, PR #35/#125)
+      - Incremental indexing (commit aa4fcf4, PR #35/#125)
+      - File watching (commit aa4fcf4, PR #35/#125)
+      - Re-exports and dynamic imports (commit 41a3387, PR #89/#95)
+      - AST error recovery (commit 38d4e96, PR #76/#92)
+      
+      Domain stability: Mature core with recent enhancements. No indexer-specific commits in past 14 days.

@@ -1,0 +1,494 @@
+# Automation Expert Domain Expertise
+# Last reviewed: 2026-02-05
+# Domain: automation layer development with Claude Agent SDK
+
+overview:
+  description: |
+    Automation expert provides specialized knowledge for kotadb's automation layer using
+    Claude Agent SDK (@anthropic-ai/claude-code) to execute automated workflows with SDK
+    integration patterns, workflow orchestration, metrics tracking, GitHub commenting,
+    console output transparency, MCP toolset configuration, and cost tracking.
+    
+  scope:
+    primary_codebase:
+      - automation/src/index.ts
+      - automation/src/workflow.ts
+      - automation/src/orchestrator.ts
+      - automation/src/reporter.ts
+      - automation/src/metrics.ts
+      - automation/src/github.ts
+      - automation/src/worktree.ts
+      - automation/src/logger.ts
+      - automation/src/context.ts
+      - automation/src/curator.ts
+      - automation/src/auto-record.ts
+      - automation/src/pr.ts
+      - app/src/cli/args.ts
+      - app/src/mcp/tools.ts
+      - app/src/mcp/server.ts
+      - app/src/db/migrations/005_workflow_contexts.sql
+    
+    broader_scope:
+      - Claude Agent SDK patterns (query(), message streaming, hooks)
+      - MCP server configuration with toolset tiers
+      - Tool filtering patterns for dynamic selection
+      - Bun.spawn patterns for gh CLI
+      - SQLite metrics storage
+      - ANSI escape code formatting
+      - Git worktree isolation
+      - Workflow context accumulation
+      - Main KotaDB database integration
+      - Haiku-powered context curation
+      - Automated workflow outcome recording
+      - PR creation with validation evidence
+      
+    not_covered:
+      - General Claude configuration (see claude-config expert)
+      - GitHub issue/PR workflows (see github expert)
+      - KotaDB API implementation (see api expert)
+      
+  rationale: |
+    Critical architectural component for orchestrating Claude Code workflows programmatically
+    with reliable SDK integration, metrics tracking, workflow automation, and transparent
+    console output while maintaining clear domain boundaries.
+
+core_implementation:
+  database_location: automation/.data/metrics.db
+  
+  key_files:
+    index_ts:
+      path: automation/src/index.ts
+      purpose: CLI entry point with env loading and metrics display
+        
+    orchestrator_ts:
+      path: automation/src/orchestrator.ts
+      purpose: Multi-phase workflow orchestration with SDK hooks
+        
+    reporter_ts:
+      path: automation/src/reporter.ts
+      purpose: Console output with ANSI formatting and verbosity control
+        
+    workflow_ts:
+      path: automation/src/workflow.ts
+      purpose: SDK query() integration and message streaming
+        
+    metrics_ts:
+      path: automation/src/metrics.ts
+      purpose: SQLite metrics storage and retrieval
+        
+    github_ts:
+      path: automation/src/github.ts
+      purpose: GitHub commenting via gh CLI
+
+    worktree_ts:
+      path: automation/src/worktree.ts
+      purpose: Git worktree management for isolated execution
+
+    context_ts:
+      path: automation/src/context.ts
+      purpose: Workflow context accumulation for inter-phase handoffs
+
+    curator_ts:
+      path: automation/src/curator.ts
+      purpose: Haiku-powered context curator for inter-phase handoffs
+
+    auto_record_ts:
+      path: automation/src/auto-record.ts
+      purpose: Automated workflow outcome recording
+
+    pr_ts:
+      path: automation/src/pr.ts
+      purpose: PR creation with validation, git status parsing, and GitHub integration
+
+    migration_005:
+      path: app/src/db/migrations/005_workflow_contexts.sql
+      purpose: Schema for workflow context storage
+
+key_operations:
+  suppress_sdk_stderr:
+    when: Providing custom console output without SDK default dots
+    approach: Configure SDK options with stderr callback that captures or ignores stderr
+    code_example: See examples/suppress-stderr.ts
+      
+  integrate_sdk_hooks:
+    when: Adding action-level logging for tool execution
+    approach: Use SDK hooks (PreToolUse, PostToolUse, Notification) to intercept tool calls
+    code_example: See examples/sdk-hooks.ts
+      
+  implement_console_reporter:
+    when: Creating user-facing real-time workflow progress output
+    approach: Build ConsoleReporter class with ANSI formatting, verbosity-aware logging, phase timing
+    code_example: See examples/console-reporter.ts
+      
+  integrate_sdk_query:
+    when: Setting up Claude Agent SDK workflow execution
+    approach: Import query() from SDK and configure with appropriate options
+    code_example: See examples/sdk-query.ts
+      
+  configure_mcp_server:
+    when: Enabling kotadb MCP tools in SDK workflow
+    approach: Configure mcpServers object with stdio transport, --stdio flag, and KOTADB_PATH env var
+    code_example: |
+      mcpServers: {
+        kotadb: {
+          type: "stdio",
+          command: "bunx",
+          args: ["--bun", "kotadb", "--stdio"],  // MUST include --stdio flag
+          env: { KOTADB_PATH: join(mainProjectRoot, ".kotadb", "kota.db") }  // NOT KOTADB_CWD
+        }
+      }
+    pitfalls:
+      - Missing --stdio flag causes MCP connection failures
+      - Using KOTADB_CWD instead of KOTADB_PATH (deprecated pattern)
+      - Not providing absolute path to kota.db in worktree contexts
+      - Pointing to worktree DB instead of main repo DB
+
+  validate_anthropic_model_names:
+    when: Configuring SDK queries with specific model versions
+    approach: Validate Anthropic model names follow claude-{variant}-{major}-{minor}-{date} format
+    examples:
+      - claude-opus-4-1-20250514
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-20250514
+
+  configure_mcp_toolset:
+    when: Selecting MCP tool tier for workflow requirements
+    approach: Configure mcpServers with --toolset flag to control available tools
+    tiers:
+      core: 6 tools (minimal)
+      default: 8 tools (standard)
+      memory: 14 tools (with memory)
+      full: 19 tools (all capabilities)
+    code_example: See examples/mcp-toolset.ts
+      
+  implement_context_accumulation:
+    when: Enabling inter-phase data handoff for multi-phase workflows
+    approach: Store curated context at end of each phase in main KotaDB database
+    code_example: See examples/context-accumulation.ts
+
+  curate_context_between_phases:
+    when: Need to inject relevant memory context between workflow phases
+    approach: Use lightweight haiku curator to query KotaDB memory tools and produce ~500 token curated summary
+    code_example: See examples/curator.ts
+  
+  auto_record_workflow_outcomes:
+    when: Workflow completes (success or failure)
+    approach: Automatically record outcomes using haiku (success -> record_decision, failure -> record_failure)
+    code_example: See examples/auto-record.ts
+
+  parse_git_status:
+    when: Extracting filenames from git status --porcelain output
+    approach: Use regex to handle all status codes robustly
+    code_example: |
+      const match = line.match(/^..\s+(.+)$/);
+      const filename = match?.[1]?.trim() ?? line.trim();
+    pitfalls:
+      - Using substring(3) breaks with single-char status codes or varying spacing
+      - Not handling edge cases (renamed files, merge conflicts)
+      - Assuming consistent spacing between status and filename
+
+  create_pr_with_validation:
+    when: Creating PR after automated workflow completion
+    approach: Run validation commands (typecheck, test), build structured PR body with evidence
+    structure: |
+      ## Summary
+      [Automated implementation details]
+      
+      ## Validation Evidence
+      ### Validation Level: 1|2|3
+      **Justification**: [Level rationale]
+      **Commands Run**:
+      - ✅/❌ `command` - output
+      
+      ## Anti-Mock Compliance
+      [Anti-mock statement]
+      
+      ## Plan
+      [Plan reference]
+      
+      ## Metrics (if available)
+      [Token/cost table]
+      
+      Closes #N
+      ADW ID: workflow-id
+    pitfalls:
+      - Not running validation before PR creation
+      - Missing anti-mock statement
+      - Wrong PR title format (should match /git:pull_request)
+      - Not removing redundant prefixes from issue titles
+
+decision_trees:
+  console_output_strategy:
+    question: How should I output console feedback for this event?
+    branches:
+      - condition: File creation/modification
+        action: reporter.logKeyAction() - always shown
+      - condition: Tool execution details
+        action: reporter.logToolUse()/logToolComplete() - verbose only
+      - condition: Phase start/completion
+        action: reporter.startPhase()/completePhase() - always shown
+      - condition: Debugging information
+        action: reporter.logVerbose() - verbose only
+      - condition: Errors and warnings
+        action: reporter.logError()/logWarning() - always shown
+        
+  mcp_toolset_selection:
+    question: Which toolset tier should I use for this workflow?
+    branches:
+      - condition: Minimal token overhead, basic code intelligence
+        action: Use --toolset core (6 tools)
+      - condition: Standard workflows with occasional data sync
+        action: Use --toolset default (8 tools) or omit flag
+      - condition: Need cross-session memory
+        action: Use --toolset memory (14 tools)
+      - condition: Advanced workflows requiring expertise validation
+        action: Use --toolset full (19 tools)
+
+  context_storage_database:
+    question: Which database should I use for workflow context storage?
+    branches:
+      - condition: Context for inter-phase workflow handoffs
+        action: Use main KotaDB database (.kotadb/kota.db)
+        rationale: Enables future MCP tool access
+      - condition: Automation execution metrics
+        action: Use automation metrics DB (automation/.data/metrics.db)
+        rationale: Automation-specific operational data
+      - condition: Code intelligence data
+        action: Use main KotaDB database (.kotadb/kota.db)
+
+  context_curation_timing:
+    question: When should context curation run?
+    branches:
+      - condition: After analysis phase
+        action: Curate context for plan phase
+      - condition: After plan phase
+        action: Curate context for build phase
+      - condition: After build phase
+        action: Curate context for improve phase
+      - condition: After improve phase
+        action: Auto-record outcome (no curation)
+      - condition: Curator fails
+        action: Log warning, continue workflow
+
+  worktree_database_path:
+    question: Which database path should MCP use in worktree context?
+    branches:
+      - condition: Running in worktree for isolated workflow
+        action: Use mainProjectRoot for KOTADB_PATH (main repo DB)
+        rationale: Worktrees share database with main repo
+      - condition: Running in main repo
+        action: Use projectRoot for KOTADB_PATH
+        rationale: Standard single-location setup
+
+patterns:
+  console_reporter_pattern:
+    structure: Class with ANSI constants, verbosity-aware methods, phase tracking
+    usage: Real-time user feedback with transparent action logging
+      
+  sdk_hook_pattern:
+    structure: HookCallback functions with event_name discrimination
+    usage: Intercept tool execution and SDK notifications
+      
+  haiku_curator_pattern:
+    structure: Separate SDK query() call with haiku model between phases
+    usage: Query memory tools, synthesize curated summary, store context
+    
+  auto_recording_pattern:
+    structure: Post-workflow haiku call to record outcome
+    usage: Success -> decision, Failure -> failure, learning flywheel
+
+  workflow_id_generation_pattern:
+    structure: adw-<issueNumber>-<timestamp> format with filesystem-safe timestamp
+    usage: Unique identifier for workflow runs enabling context accumulation
+
+  context_upsert_pattern:
+    structure: INSERT ON CONFLICT UPDATE with upsert semantics
+    usage: Idempotent context storage allowing phase re-execution
+
+  git_status_regex_pattern:
+    structure: /^..\s+(.+)$/ to extract filename from porcelain format
+    usage: Robust parsing of git status output for any status code combination
+    rationale: Handles " M ", "??", "MM", "A ", "D ", renamed files, etc.
+
+  mcp_stdio_configuration_pattern:
+    structure: args array with explicit --stdio flag after kotadb command
+    usage: MCP server configuration for SDK integration
+    example: |
+      ["--bun", "kotadb", "--stdio"] or
+      ["--bun", "kotadb", "--stdio", "--toolset", "memory"]
+    rationale: Explicit stdio mode declaration for SDK MCP protocol
+
+  database_path_threading_pattern:
+    structure: Pass mainProjectRoot separately from projectRoot through all layers
+    usage: Enable MCP to use main DB even when executing in worktree
+    rationale: Worktrees don't have their own .kotadb directory
+
+  pr_validation_evidence_pattern:
+    structure: Run validation commands, capture results, include in PR body
+    usage: Transparent quality gates in automated PRs
+    rationale: Matches /git:pull_request template standards
+
+best_practices:
+  console_output:
+    - Use ConsoleReporter for all user-facing output
+    - Separate ANSI formatting constants
+    - Always provide stderr fallback
+    - Gate verbose output with isVerbose method
+    - Never use console.* (use process.std* only)
+    - Format numbers consistently
+    
+  sdk_hook_integration:
+    - Wrap hooks in try-catch to prevent interruption
+    - Ensure HookCallback returns {}
+    - Use HookInput event_name to discriminate types
+    - Implement separate functions for clarity
+    - Consider non-fatal hook failures expected
+    - Don't duplicate output between stderr and hooks
+    
+  mcp_toolset:
+    - Use --toolset flag to control tool availability
+    - Default tier (8 tools) for standard workflows
+    - Core tier (6 tools) for minimal token footprint
+    - Memory tier (14 tools) for cross-session intelligence
+    - Full tier (19 tools) for advanced validation
+    - Add tier metadata to all new ToolDefinitions
+    - Validate toolset values with type guards
+    - Thread toolset through McpServerContext
+    - Test hierarchical inclusion
+  
+  mcp_server_configuration:
+    - Always include --stdio flag in args array
+    - Use KOTADB_PATH env var (not KOTADB_CWD)
+    - Provide absolute path to kota.db via join()
+    - Thread mainProjectRoot for worktree contexts
+    - Point to main repo DB, not worktree copy
+    - Consistent arg order: ["--bun", "kotadb", "--stdio", ...]
+    
+  sdk_integration:
+    - Always validate ANTHROPIC_API_KEY before query()
+    - Use type guards for message handling
+    - Configure mcpServers for kotadb access
+    - Set permissionMode bypassPermissions
+    - Configure hooks for action-level logging
+    - Provide stderr callback to suppress default output
+    
+  metrics_storage:
+    - Auto-initialize schema on first use
+    - Use prepared statements
+    - Index on issue_number and started_at
+    - Store session_id for debugging
+    
+  error_handling:
+    - Non-fatal GitHub comment failures
+    - Graceful env loading failures
+    - Record failed workflow metrics
+    - Always close metrics DB on exit
+    - Catch hook exceptions
+    
+  workflow_context:
+    - Store context in main KotaDB database
+    - Generate workflow ID at start, pass through all layers
+    - Use nullable workflowId for backward compatibility
+    - Validate phase consistency
+    - Clear context only on successful completion
+    - Make context cleanup non-fatal
+    - Structure context data with required fields
+    - Use upsert semantics
+
+  context_curation:
+    - Run curator between phases
+    - Use haiku model for speed and cost
+    - Target ~500 token summaries
+    - Query all three memory scopes
+    - Store via storeWorkflowContext()
+    - Make curation failures non-fatal
+    - Monitor curator timing (<2s)
+    - Use memory toolset
+  
+  auto_recording:
+    - Record once per workflow (not per phase)
+    - Run after improve phase completes
+    - Include all workflow contexts
+    - Success: record_decision with pattern scope
+    - Failure: record_failure with full error
+    - Include related_files array
+    - Skip recording in dry-run mode
+    - Make recording failures non-fatal
+
+  git_status_parsing:
+    - Use regex pattern /^..\s+(.+)$/ for filename extraction
+    - Provide fallback to line.trim() if regex fails
+    - Never use substring() with hardcoded positions
+    - Test with all status codes (M, A, D, ??, MM, etc.)
+    - Handle renamed files (R status with arrow notation)
+
+  pr_creation:
+    - Run validation before creating PR
+    - Capture validation results (passed/failed)
+    - Build PR body with Validation Evidence section
+    - Include Anti-Mock Compliance statement
+    - Remove redundant prefixes from issue titles
+    - "Format title: issueType(domain): cleanTitle (#issueNumber)"
+    - Truncate titles exceeding 70 chars
+    - Include ADW workflow ID when available
+    - Show validation commands with ✅/❌ status
+    - Structure matches /git:pull_request template
+
+known_issues:
+  - issue: Invalid Anthropic model name causes HTTP 404 errors
+    impact: SDK query() fails with confusing error
+    resolution: Use correct format claude-{variant}-{major}-{minor}-{date}
+    status: Fixed in #163
+    
+  - issue: SDK query() timeout on long workflows
+    impact: Workflow fails mid-execution
+    resolution: Increase maxTurns, optimize workflow
+    status: Operational guidance
+    
+  - issue: ANSI escape codes in non-TTY environments
+    impact: Colored output appears as escape codes in logs
+    resolution: Consider environment detection or flag
+    status: Known limitation
+
+  - issue: Git status substring(3) parsing fragile
+    impact: Breaks with status codes not exactly 3 chars
+    resolution: Use regex pattern /^..\s+(.+)$/ instead
+    status: Fixed in #184
+
+  - issue: MCP server missing --stdio flag in worktrees
+    impact: MCP connection fails in SDK workflows
+    resolution: Add --stdio flag to args array
+    status: Fixed in #184
+
+  - issue: KOTADB_CWD env var deprecated
+    impact: Incorrect database path resolution
+    resolution: Use KOTADB_PATH with absolute join() path
+    status: Fixed in #184
+
+potential_enhancements:
+  - TTY detection for conditional ANSI usage
+  - Workflow pause/resume capability
+  - Cost budget enforcement
+  - Retry logic for transient failures
+  - Workflow visualization UI
+  - Metrics aggregation and reporting
+  - PR template customization per domain
+  - Validation level auto-detection from file changes
+
+stability:
+  insight_rate_trend: converging
+  contradiction_count: 0
+  last_reviewed: 2026-02-05
+  notes: |
+    Domain converging with comprehensive automation patterns established. Key milestones:
+    - #184: Git status regex parsing, MCP --stdio flag, PR validation evidence
+    - #148: Deep KotaDB integration with haiku-powered curation and auto-recording
+    - #144: Workflow context accumulation infrastructure
+    - #163: Model naming fix (claude-haiku-4-5-20251001)
+    - #95: Toolset tiers for dynamic tool selection
+    - #65: Console transparency with ANSI formatting
+    - #64: Worktree isolation for parallel execution
+    
+    Current architecture enables intelligent multi-phase workflows with curated context,
+    automated learning from outcomes, systematic knowledge accumulation, robust PR creation
+    with validation evidence, and reliable MCP integration in all execution contexts.

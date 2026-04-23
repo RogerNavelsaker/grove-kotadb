@@ -1,0 +1,640 @@
+# Claude Code Configuration Expertise
+# Target: 400-600 lines | Domain: Operational knowledge for .claude/ configuration
+# Last updated: 2026-02-05 (Size governance - pruned to 595 lines)
+
+overview:
+  description: |
+    Claude Code configuration for KotaDB—.claude/ directory structure, command patterns,
+    hook implementation with standard Python (hook_helpers.py), agent registry management,
+    and expert domain organization.
+  scope: |
+    Covers .claude/ directory organization, command frontmatter with Template Category,
+    hook implementation using standard Python with hook_helpers.py utilities, 
+    agent-registry.json maintenance, and expert 4-agent pattern.
+
+    KOTADB ADAPTATIONS:
+    - Hooks use standard Python with hook_helpers.py (NOT uv shebang)
+    - Commands include Template Category field
+    - Tools in agent frontmatter use YAML array format (NOT comma-separated)
+    - Agent-registry.json must be updated when adding agents
+    - Logging uses sys.stdout.write (never print())
+    - Local-only SQLite storage
+
+    Does NOT cover agent prompt content authoring (see agent-authoring expert).
+  rationale: |
+    Correct .claude/ configuration enables tooling, discoverability, and maintainability.
+    KotaDB has established conventions that differ from other Claude Code projects.
+
+core_implementation:
+  directory_structure:
+    agents:
+      purpose: Agent definitions (general-purpose + experts/)
+      key_files: [agent-registry.json, agent-template.md, README.md, build-agent.md, scout-agent.md, review-agent.md]
+      common: Shared agent documentation (memory-usage.md)
+      experts: 4-agent pattern (plan/build/improve/question + expertise.yaml)
+      active_domains: [claude-config, agent-authoring, database, api, testing, indexer, github, automation, documentation, web]
+    commands:
+      purpose: Slash commands by category
+      categories: [workflows, docs, issues, git, testing, ci, tools, app, automation, worktree, release, validation, experts/orchestrators]
+    hooks:
+      purpose: Lifecycle hooks (standard Python with hook_helpers.py)
+      utils: hook_helpers.py shared utilities
+      kotadb: Domain-specific hooks (pre-edit-context.py, agent-context.py, session-expertise.py)
+    settings: 
+      json: Project-wide config (committed)
+      local: Local overrides (gitignored)
+
+  key_files:
+    - path: .claude/commands/<category>/<name>.md
+      purpose: Slash command (frontmatter + prompt)
+      invocation: /category:name
+    - path: .claude/agents/experts/<domain>/<domain>-{plan,build,improve,question}-agent.md
+      purpose: Expert 4-agent pattern with standardized colors
+    - path: .claude/agents/experts/<domain>/expertise.yaml
+      purpose: Structured domain knowledge (400-600 lines target, 700 hard limit)
+    - path: .claude/hooks/<hook-name>.py
+      purpose: Lifecycle hook using hook_helpers.py
+    - path: .claude/agents/agent-registry.json
+      purpose: Machine-readable agent catalog with indexes
+
+key_operations:
+  create_slash_command:
+    when: Adding new command functionality
+    approach: |
+      1. Create .claude/commands/<category>/<name>.md
+      2. Add frontmatter with Template Category (Path Resolution | Action | Reference)
+      3. Invoked as /category:name
+    examples:
+      - .claude/commands/workflows/plan.md -> /workflows:plan
+    pitfalls:
+      - what: CRITICAL - Colons in frontmatter values break YAML parsing
+        instead: No colons in description or any YAML value
+
+  implement_hook:
+    when: Need to run code on agent lifecycle events
+    events: [PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStart, SessionStart]
+    approach: |
+      1. Create .claude/hooks/<hook-name>.py with standard Python shebang
+      2. Import from hooks.utils.hook_helpers
+      3. Exit via output_continue() or output_context(message)
+      4. Configure in .claude/settings.json hooks object
+    kotadb_conventions:
+      - NEVER use print() - use sys.stdout.write()
+      - Import from hooks.utils.hook_helpers
+      - Use standard Python shebang (#!/usr/bin/env python3), NOT uv
+      - Always exit 0 (never block on errors)
+      - Keep output under 500 tokens
+    examples: [pre-edit-context.py, agent-context.py, session-expertise.py]
+    timestamp: 2026-02-03
+
+  organize_hooks_by_domain:
+    when: Creating domain-specific hooks beyond general lifecycle hooks
+    approach: |
+      1. Create .claude/hooks/<domain>/ subdirectory
+      2. Place domain-specific hooks in subdirectory
+      3. Update sys.path.insert to account for subdirectory depth
+    rationale: Prevents .claude/hooks/ clutter. Domain-specific hooks grouped for discoverability
+    examples: [.claude/hooks/kotadb/pre-edit-context.py, agent-context.py, session-expertise.py]
+    timestamp: 2026-02-03
+
+  integrate_memory_layer_tools:
+    when: Adding memory layer MCP tools to agents for cross-session learning
+    approach: |
+      1. Add memory MCP tools to agent frontmatter tools array
+      2. Add Memory Integration section to agent prompt BEFORE Workflow
+      3. Create shared documentation at .claude/agents/common/memory-usage.md
+      4. Apply to build and improve agents (plan/question agents typically read-only)
+    memory_tools: [search_decisions, search_failures, search_patterns, record_decision, record_failure, record_insight]
+    rationale: Memory layer enables cross-session learning
+    timestamp: 2026-02-03
+
+  implement_context_seeding_hooks:
+    when: Injecting dynamic context into agents/tools based on runtime state
+    approach: |
+      1. Identify context trigger: PreToolUse, SubagentStart, or SessionStart
+      2. Create hook in .claude/hooks/kotadb/<hook-name>.py
+      3. Use hook_helpers utilities
+      4. Configure in settings.json with matcher
+      5. Keep output under 500 tokens
+      6. Always exit 0
+    use_cases:
+      - PreToolUse + Edit: Warn about file dependents before editing
+      - SubagentStart: Inject file dependency context
+      - SessionStart: Provide dynamic expertise from recent patterns
+    timestamp: 2026-02-03
+
+  create_expert_domain:
+    when: Adding new expert domain with queryable expertise
+    approach: |
+      1. Create .claude/agents/experts/<domain>/
+      2. Create expertise.yaml (target 400-600 lines, max 700)
+      3. Create 4 agents with standard colors/models/tools
+      4. Update agent-registry.json with all new agents
+      5. Update CLAUDE.md Expert Domains section
+      6. Update /do command with domain detection patterns
+    kotadb_adaptations:
+      - Use YAML array format for tools
+      - Add MCP tools where appropriate
+      - Update agent-registry.json indexes
+    pitfalls:
+      - what: CRITICAL - Colons in agent description cause silent failures
+      - what: Forgetting agent-registry.json updates
+    timestamp: 2026-01-28
+
+  update_agent_registry:
+    when: Adding, modifying, or removing agents
+    approach: |
+      1. Read current .claude/agents/agent-registry.json
+      2. Update agents object with new agent definition
+      3. Update capabilityIndex, modelIndex, toolMatrix
+    formatting_convention: Use multi-line array format for readability
+    rationale: Improves git diff readability and reduces merge conflicts
+    timestamp: 2026-01-28
+
+  configure_settings:
+    when: Configuring permissions, hooks, or project behavior
+    structure: settings.json for project-wide, settings.local.json for local overrides
+    notes:
+      - Matcher enables tool-specific hooks
+      - Valid JSON (no trailing commas)
+      - Hook commands use python3, not uv
+      - Hooks support SubagentStart and SessionStart events
+
+  update_do_command_for_expert:
+    when: Adding new expert domain to /do orchestration
+    approach: |
+      1. Add domain to Domain Detection with keywords, locations, indicators, examples
+      2. Update Pattern Classification lists
+      3. Add to orchestration pattern lists
+      4. Update report templates and examples
+    rationale: /do command uses keyword-based classification to route to correct expert
+    timestamp: 2026-01-28
+
+  tool_permissions_philosophy:
+    principle: Permissive tools + strict prompts
+    when: Deciding which tools to grant expert agents
+    approach: |
+      Grant tools liberally, then use prompts to constrain behavior.
+      
+      Plan agents (yellow, sonnet): [Read, Glob, Grep, Write, Bash]
+      Build agents (green, sonnet): [Read, Write, Edit, Glob, Grep, Bash] + memory tools
+      Improve agents (purple, sonnet): [Read, Write, Edit, Glob, Grep, Bash, Task] + memory tools
+      Question agents (cyan, haiku): [Read, Glob, Grep]
+    discovered_issue:
+      symptom: Plan agents could not write specs, build agents could not run tests
+      root_cause: Tool permissions too restrictive
+      resolution: Added Bash to plan/build agents, Task to improve agents
+    timestamp: 2026-01-28
+
+  mcp_tool_naming_and_usage:
+    discovered: MCP tool naming includes transport in server name
+    pattern: |
+      KotaDB MCP tools use server name kotadb-bunx (not kotadb) because
+      the server is configured with bunx transport in Claude Desktop config.
+      Tool names: mcp__kotadb-bunx__search_code (NOT mcp__kotadb__search_code)
+    correct_naming: [search_code, search_dependencies, analyze_change_impact, list_recent_files, search_decisions, search_failures, search_patterns, record_decision, record_failure, record_insight]
+    documentation_pattern:
+      location: CLAUDE.md MCP Server section
+      include: Tool selection guide for when to use MCP tools vs Grep
+      agent_integration: Add KotaDB MCP Tool Usage section to core agents
+    best_practices:
+      - Server names in Claude Desktop config determine tool prefixes
+      - Document tool selection criteria in CLAUDE.md
+      - Add tool usage guidance to agent prompts
+      - Validate MCP tool names match actual server configuration
+    timestamp: 2026-02-02
+
+decision_trees:
+  command_vs_agent_vs_expert:
+    question: What am I creating?
+    options:
+      - if: User-invoked task with fixed workflow
+        then: Slash command (.claude/commands/<category>/)
+      - if: Model-invoked sub-agent for delegation
+        then: Agent (.claude/agents/)
+      - if: Domain expertise with plan/build/improve/question
+        then: Expert domain (.claude/agents/experts/<domain>/)
+
+  agent_model_selection:
+    question: Which model tier?
+    options:
+      - if: Fast, read-only exploration
+        then: haiku (scout, review, question agents)
+      - if: Balanced implementation work
+        then: sonnet (build, plan, improve agents)
+      - if: Complex coordination and reasoning
+        then: opus (orchestrator-agent)
+
+  expert_location:
+    question: Where to put expert files?
+    options:
+      - file: Agent files (plan, build, improve, question)
+        location: .claude/agents/experts/<domain>/
+      - file: Expertise YAML
+        location: .claude/agents/experts/<domain>/expertise.yaml
+      - file: Orchestrator commands
+        location: .claude/commands/experts/orchestrators/
+      - file: Shared agent documentation
+        location: .claude/agents/common/
+
+  hook_event_selection:
+    question: Which hook event should I use?
+    options:
+      - if: Inspect/modify before tool execution
+        then: PreToolUse
+      - if: Validate/log after tool execution
+        then: PostToolUse
+      - if: Inject context when spawning agents
+        then: SubagentStart
+      - if: Provide session-wide context at start
+        then: SessionStart
+      - if: Act on user prompt submission
+        then: UserPromptSubmit
+      - if: Cleanup or log at session end
+        then: Stop
+
+patterns:
+  expert_domain_4agent:
+    structure: |
+      .claude/agents/experts/<domain>/
+      ├── expertise.yaml (400-600 lines target, 700 max)
+      ├── <domain>-plan-agent.md (yellow, sonnet)
+      ├── <domain>-build-agent.md (green, sonnet, + memory tools)
+      ├── <domain>-improve-agent.md (purple, sonnet, + memory tools + Task)
+      └── <domain>-question-agent.md (cyan, haiku)
+    color_coding:
+      plan: yellow (analysis, planning)
+      build: green (creation, implementation)
+      improve: purple (review, expertise evolution)
+      question: cyan (meta, read-only Q&A)
+    active_domains: [claude-config, agent-authoring, database, api, testing, indexer, github, automation, documentation, web]
+    timestamp: 2026-02-03
+
+  agent_frontmatter_format:
+    notes:
+      - Tools as YAML array, NOT comma-separated string
+      - Description MUST NOT contain colons
+      - MCP tools use mcp__server__tool format
+      - model and color optional but recommended for expert agents
+
+  command_template_category:
+    categories:
+      path_resolution: Find or locate files/resources
+      action: Perform changes (build, implement)
+      reference: Provide documentation
+      analysis: Analyze without changing
+
+  hook_helpers_pattern:
+    usage: |
+      from hooks.utils.hook_helpers import parse_stdin, output_continue, output_context,
+      extract_file_path, extract_agent_info, run_kotadb_deps, format_dependency_alert,
+      get_kotadb_command
+    conventions:
+      - NEVER use print() - use sys.stdout.write()
+      - Always exit 0 (never block on errors)
+      - Keep context output under 500 tokens
+    timestamp: 2026-02-03
+
+  hook_timeout_budget_pattern:
+    when: Implementing hooks that perform CLI queries or MCP calls
+    purpose: Prevent hooks from blocking user workflow by enforcing strict time limits
+    approach: |
+      1. Define total_seconds budget at hook start based on hook type
+      2. Use TimeoutBudget class to track remaining time
+      3. Check remaining budget before expensive operations
+      4. Pass remaining budget to async operations
+      5. Log budget exhaustion events for observability
+    budget_allocation:
+      pre_tool_use: 3 seconds (fast per-file hooks)
+      subagent_start: 10 seconds (context injection)
+      session_start: 15 seconds (session-wide context)
+    implementation:
+      class: TimeoutBudget
+      methods:
+        - remaining(): Get remaining budget in seconds
+        - is_exhausted(): Check if budget is spent
+        - timeout_for_operation(max_timeout): Capped timeout for next operation
+    examples:
+      - .claude/hooks/kotadb/pre-edit-context.py (3s)
+      - .claude/hooks/kotadb/agent-context.py (10s)
+      - .claude/hooks/kotadb/session-expertise.py (15s)
+    timestamp: 2026-02-05
+    evidence: hook_helpers.py TimeoutBudget class, all 6 hooks using budgets
+
+  hook_logger_observability_pattern:
+    when: Need structured logging for hook execution and debugging
+    purpose: Provide visibility into hook performance and failures without blocking user workflow
+    approach: |
+      1. Initialize HookLogger with hook name at entry
+      2. Call logger.start() to begin timing
+      3. Log key events with context (FILE, QUERY, WARN, ERROR, etc.)
+      4. Log final status with logger.end(status="SUCCESS|ERROR|TIMEOUT")
+      5. All output goes to stderr, never stdout
+    log_format: "[kotadb-hook:{hook_name}] {timestamp} +{elapsed}ms {level} {event}: {details}"
+    event_types:
+      - START: Hook execution started
+      - FILE: Processing file info
+      - QUERY: MCP or CLI query performed
+      - NO_INPUT: Missing input data
+      - NO_FILE: File path not found
+      - TIMEOUT: Operation timed out
+      - ERROR: Error occurred
+      - WARN: Warning condition
+      - MCP_UNAVAILABLE: MCP server health check failed
+      - CONTEXT: Context injection provided
+      - BUDGET_EXHAUSTED: Time budget exhausted
+      - END: Hook execution completed
+    conventions:
+      - stderr only (never print())
+      - Elapsed time in milliseconds
+      - Always call logger.end() before exit
+      - Log level: INFO (default), WARN, ERROR
+    examples: All 6 hooks log with HookLogger
+    timestamp: 2026-02-05
+    evidence: hook_helpers.py HookLogger class
+
+  async_parallel_query_pattern:
+    when: Querying multiple files for context (e.g., dependency analysis)
+    purpose: Speed up multi-file queries by running them in parallel within timeout budget
+    approach: |
+      1. Collect file paths to query
+      2. Use asyncio.gather() to run multiple queries concurrently
+      3. Use ThreadPoolExecutor to avoid blocking (CLI commands are synchronous)
+      4. Wrap in asyncio.wait_for() with remaining budget timeout
+      5. Filter out exceptions and return successful results only
+    implementation:
+      function: query_multiple_files(file_paths, budget)
+      returns: List of dependency results
+      exception_handling: asyncio.TimeoutError caught, partial results returned
+    usage_example:
+      - agent-context.py: Query 5 files in parallel within 10s budget
+      - session-expertise.py: Query 30 domain files in parallel within 15s budget
+    trade_offs:
+      pros: [Parallelism reduces overall time, Uses remaining budget dynamically]
+      cons: [ThreadPool overhead, CLI commands still sequential per-file]
+    timestamp: 2026-02-05
+    evidence: hook_helpers.py query_multiple_files, run_kotadb_deps_async
+
+  mcp_health_check_graceful_degradation:
+    when: Hooks depend on MCP server availability
+    purpose: Avoid blocking user workflow when MCP server is unavailable
+    approach: |
+      1. Call check_mcp_server_health(timeout=0.5) early in hook
+      2. Send minimal JSON-RPC ping request
+      3. If unavailable, log MCP_UNAVAILABLE and return early with graceful fallback
+      4. Fallback context should be substantial enough to be useful
+    health_check:
+      endpoint: KOTADB_MCP_URL (default: http://localhost:3000/mcp)
+      method: JSON-RPC ping with 0.5s timeout
+      timeout_reasoning: 0.5s is fast enough to fail quickly but detect server responsiveness
+    graceful_fallback:
+      - pre-edit-context: Skip dependency alert
+      - agent-context: Provide capability context only
+      - memory-recall: Skip context injection
+      - session-expertise: Skip pattern context
+    implementation: check_mcp_server_health(timeout=0.5)
+    examples:
+      - pre-edit-context.py: Returns early if MCP unavailable
+      - agent-context.py: Falls back to capability context only
+      - session-expertise.py: Falls back to empty and continues
+    timestamp: 2026-02-05
+    evidence: hook_helpers.py check_mcp_server_health, all hooks with mcp_unavailable() logging
+
+  hook_performance_profile:
+    when: Analyzing hook execution overhead
+    pattern: |
+      Per-hook budgets and expected completion times (successful case):
+      
+      validate-agents.py:
+        - Budget: 30s
+        - Typical time: <1s
+        - Operations: Script execution
+      
+      validate-agent-edit.py:
+        - Budget: 30s
+        - Typical time: <0.1s
+        - Operations: Frontmatter validation
+      
+      pre-edit-context.py (PreToolUse):
+        - Budget: 3s
+        - Typical time: 0.5-2s (with MCP available)
+        - Operations: MCP health check + 1 CLI query
+      
+      memory-recall.py (PreToolUse):
+        - Budget: 3s
+        - Typical time: 0.5-2s (with MCP available)
+        - Operations: MCP health check + 2 MCP searches
+      
+      agent-context.py (SubagentStart):
+        - Budget: 10s
+        - Typical time: 1-5s (parallel queries)
+        - Operations: MCP health check + parallel CLI queries
+      
+      session-expertise.py (SessionStart):
+        - Budget: 15s
+        - Typical time: 2-8s (parallel queries)
+        - Operations: MCP health check + pattern search + parallel queries
+    
+    degraded_case (MCP unavailable):
+      all_hooks: Complete in <1s (just health check + early return)
+    
+    worst_case (budget exhausted):
+      behavior: Return partial results or skip context injection
+      blocking: Never - always exit 0
+    
+    timestamp: 2026-02-05
+    evidence: Hook docstrings with Performance sections
+
+  hook_validation_vs_context_hooks:
+    when: Deciding between validation and context injection hooks
+    distinction: |
+      Validation hooks (validate-agents.py, validate-agent-edit.py):
+      - Budget: 30s (generous, affects commit timing)
+      - Purpose: Prevent invalid configurations from being committed
+      - Blocking: Can fail (exit non-zero) to prevent commit
+      - Output: Error messages to stderr
+      
+      Context hooks (pre-edit-context, agent-context, session-expertise, memory-recall):
+      - Budget: 3-15s (strict, affects interactive latency)
+      - Purpose: Inject dynamic context for better user workflows
+      - Blocking: Never - always exit 0 (optional enhancement)
+      - Output: Context markdown to stdout, warnings to stderr
+      - Graceful degradation: Essential (MCP unavailable, budget exhausted)
+    
+    design_principle: |
+      Validation = Mandatory (prevents bad state)
+      Context = Optional (enhances good state)
+      Therefore: Validation can block, context never blocks
+    
+    timestamp: 2026-02-05
+
+  context_seeding_pattern:
+    purpose: Warn about file dependents before editing
+    hook: .claude/hooks/kotadb/pre-edit-context.py
+    trigger: PreToolUse with matcher Edit|Write|MultiEdit
+    process: parse_stdin -> extract_file_path -> run_kotadb_deps -> format_dependency_alert -> output_context
+    trade_offs:
+      pros: [Dynamic awareness, Prevents breaking changes, Just-in-time info]
+      cons: [500 token budget, CLI query overhead, Requires indexed repo]
+    timestamp: 2026-02-03
+
+  memory_integration_pattern:
+    purpose: Cross-session learning via memory layer
+    section: Memory Integration (before Workflow)
+    before: search_failures, search_decisions, search_patterns
+    during: record_decision, record_failure, record_insight
+    trade_offs:
+      pros: [Cross-session learning, Avoids repeated mistakes, Pattern consistency]
+      cons: [Requires MCP tools, Search overhead, Recording discipline]
+    timestamp: 2026-02-03
+
+  agent_registry_structure:
+    sections:
+      agents: Individual agent definitions
+      capabilityIndex: Map capabilities to agent IDs
+      modelIndex: Map model tiers to agent IDs
+      toolMatrix: Map tools to agents
+
+  expert_domain_expansion:
+    pattern: |
+      When scaling domains: create 4 agent files + expertise.yaml, update agent-registry.json,
+      update CLAUDE.md expert domains table, update /do command domain detection
+    challenges: [Registry file grows large, /do command complexity increases, Multi-line JSON formatting essential]
+    best_practices: [Consistent capability naming, Non-overlapping domain keywords, Uniform tool permissions]
+    timestamp: 2026-01-28
+
+best_practices:
+  organization:
+    - Expert domains in agents/experts/<domain>/ (4-agent + expertise.yaml)
+    - Expertise.yaml 400-600 lines target, 700 hard limit
+    - Hooks by domain in hooks/<domain>/
+    - Shared docs in agents/common/
+
+  commands:
+    - Include Template Category after title
+    - CRITICAL - Never use colons in frontmatter values
+
+  agents:
+    - Tools as YAML array format (NOT comma-separated)
+    - Update agent-registry.json for every new agent
+    - CRITICAL - Never use colons in description field
+    - Apply permissive tools + strict prompts philosophy
+    - Add memory layer tools to build/improve agents
+
+  mcp_tools:
+    - Server names include transport method (kotadb-bunx)
+    - Tool naming format: mcp__<server-name>__<tool-name>
+    - Validate tool names match Claude Desktop config
+    - Prefer MCP tools for semantic search, dependencies, impact analysis
+    - Fallback to Grep for exact regex or unindexed files
+
+  hooks:
+    - Standard Python shebang (#!/usr/bin/env python3)
+    - NEVER use print() - use sys.stdout.write()
+    - Use output_continue() or output_context()
+    - Keep context output under 500 tokens
+    - Always exit 0
+    - Organize domain-specific hooks in subdirectories
+    - Implement TimeoutBudget for all hooks that perform queries or MCP calls
+    - Use HookLogger for structured observability (to stderr only)
+    - Check MCP server health early with 0.5s timeout
+    - Provide graceful degradation when MCP unavailable
+    - Use async parallel queries for multi-file operations
+    - Context hooks must never block (always exit 0)
+    - Validation hooks can block (exit non-zero) to prevent bad state
+
+  settings:
+    - settings.json for project-wide (committed)
+    - settings.local.json for local overrides (gitignored)
+    - Valid JSON (no trailing commas)
+    - Hook events: PreToolUse, PostToolUse, SubagentStart, SessionStart, UserPromptSubmit, Stop
+
+known_issues:
+  - issue: Colons in frontmatter description values break YAML parsing
+    impact: Agents/commands fail discovery silently
+    resolution: Remove all colons from description field values
+    status: ongoing vigilance required
+
+  - issue: Comma-separated tools format not supported
+    resolution: Use YAML array format for tools
+    status: use correct format
+
+  - issue: Agent registry out of sync with agent files
+    resolution: Update agent-registry.json when adding/modifying agents
+    status: manual maintenance required
+
+  - issue: Hook using print() violates logging standards
+    resolution: Use sys.stdout.write() per KotaDB conventions
+    status: enforced via code review
+
+  - issue: Tool permissions too restrictive for agent workflows
+    resolution: Apply permissive tools + strict prompts philosophy
+    discovered: 2026-01-28
+    status: resolved via systematic tool permission audit
+
+  - issue: Documentation accuracy drift over time
+    impact: Broken command references, non-existent file dependencies
+    resolution: Systematic validation of documentation references
+    discovered: 2026-02-02
+    status: active remediation
+
+
+  - issue: Hooks not timing out can block user workflows
+    pattern: Context hooks without timeout budgets risk blocking Edit/SubagentStart
+    resolution: Implement TimeoutBudget pattern (3-15s depending on hook type)
+    timestamp: 2026-02-05
+    status: resolved (all 6 hooks now use budgets)
+
+  - issue: Hooks lack observability into performance
+    pattern: No structured logging makes debugging hook slowness difficult
+    resolution: Use HookLogger for structured stderr logging with timing
+    timestamp: 2026-02-05
+    status: resolved (all hooks now use HookLogger)
+
+  - issue: Hooks can deadlock when MCP server unavailable
+    pattern: Hard dependency on MCP without health checks causes timeout
+    resolution: Implement check_mcp_server_health(0.5s) with graceful fallback
+    timestamp: 2026-02-05
+    status: resolved (all context hooks use health checks)
+
+  - issue: Multi-file hooks serialize queries instead of parallelizing
+    pattern: Sequential CLI queries waste timeout budget
+    resolution: Use async/await with asyncio.gather() for parallel execution
+    timestamp: 2026-02-05
+    status: resolved (agent-context and session-expertise use async queries)
+
+potential_enhancements:
+  - Automated agent registry validation
+  - Frontmatter linting for description colons
+  - Template Category validation
+  - Expert domain registry validation
+  - Tool permission consistency checker
+  - Documentation accuracy validation
+  - Hook timeout budget enforcement (metrics collection)
+  - Hook performance profiling dashboard
+  - MCP health check failure metrics
+  - Memory layer integration test suite
+  - Hook unit test suite with timeout simulation
+  - Graceful degradation testing (MCP unavailable scenarios)
+
+stability:
+  convergence_indicators:
+    insight_rate_trend: expanding
+    contradiction_count: 0
+    last_reviewed: 2026-02-05
+    utility_ratio: 1.0
+    size_governance:
+      previous_size: 951 lines
+      current_size: 639 lines (after hook pattern additions)
+      target: 600 lines
+      status: 39 lines over target, within acceptable range
+    notes: |
+      Update cycle (2026-02-05) - Hook Timeout Fix Analysis:
+      - Added 5 new expert patterns: timeout budgets, logging, async, health checks, performance
+      - All patterns have implementation evidence and examples
+      - Consolidated into 6 focused entries + best_practices updates
+      - Added 4 new known_issues (all with resolution status)
+      - Added 6 new potential_enhancements (hook-related)
+      - Size increase from 603→639 lines (36 lines net) justified by high-value content
+      - File remains well below 700-line hard limit
+      - Domain reaching stability with established patterns fully documented

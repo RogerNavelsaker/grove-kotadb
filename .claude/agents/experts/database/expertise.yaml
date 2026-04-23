@@ -1,0 +1,533 @@
+# Database Expertise for KotaDB
+# Target: 400-600 lines | Domain: SQLite schema design, FTS5 search, local-only architecture
+
+overview:
+  description: SQLite database expertise for KotaDB—local-only code intelligence storage with FTS5 full-text search, WAL mode, and type-safe TypeScript wrappers.
+  scope: |
+    Schema (app/src/db/sqlite-schema.sql), client (app/src/db/sqlite/sqlite-client.ts),
+    queries (app/src/api/queries.ts), FTS5 patterns, recursive CTEs, WAL config,
+    migrations, and project-local storage (project-root.ts, gitignore.ts).
+    
+    ARCHITECTURE (v2 - LOCAL-FIRST):
+    - Local-only SQLite (no cloud); location: <project-root>/.kotadb/kota.db
+    - Path resolution: config > KOTADB_PATH env > project-local (via .git marker)
+    - Auto-gitignore for .kotadb/; WAL mode; FTS5; pool: 1 writer + N readers
+    - Types: uuid->TEXT, timestamptz->TEXT(ISO8601), jsonb->TEXT, boolean->INTEGER
+
+core_implementation:
+  database_location:
+    primary: "<project-root>/.kotadb/kota.db"
+    resolution:
+      - Explicit config
+      - KOTADB_PATH env var
+      - Project-local via .git marker
+
+  key_files:
+    - path: app/src/db/sqlite-schema.sql
+      purpose: Schema with FTS5, triggers, indexes
+    - path: app/src/db/sqlite/sqlite-client.ts
+      purpose: KotaDatabase, ConnectionPool, getGlobalDatabase()
+    - path: app/src/api/queries.ts
+      purpose: searchFiles(), queryDependents(), queryDependencies()
+    - path: app/src/config/project-root.ts
+      purpose: findProjectRoot() - walk up to .git
+    - path: app/src/config/gitignore.ts
+      purpose: ensureKotadbIgnored() - auto-add .kotadb/
+
+  schema_principles:
+    types:
+      uuid: "TEXT (36 chars)"
+      timestamp: "TEXT (ISO 8601)"
+      json: "TEXT"
+      boolean: "INTEGER 0/1"
+    constraints:
+      - TEXT UUIDs via randomUUID()
+      - ON DELETE CASCADE
+      - partial indexes
+      - CHECK for enums
+
+key_operations:
+  fts5_with_escaping:
+    when: Full-text search on file content
+    pattern: |
+      # External content FTS5 (no duplicate storage)
+      CREATE VIRTUAL TABLE indexed_files_fts USING fts5(
+        path, content, content='indexed_files', content_rowid='rowid'
+      );
+      # Query with bm25 ranking:
+      SELECT f.*, snippet(...) FROM indexed_files_fts fts
+      JOIN indexed_files f ON fts.rowid = f.rowid
+      WHERE indexed_files_fts MATCH ? ORDER BY bm25() LIMIT ?
+    escaping: |
+      function escapeFts5Term(term: string): string {
+        return `"${term.replace(/"/g, '""')}"`;
+      }
+      # Prevents: multi-word as AND, hyphens as NOT, keywords as operators
+    test_cases:
+      - "pre-commit (hyphen)"
+      - "planType smb (multi-word)"
+      - "search and find (keyword)"
+    evidence: "Commit 5af086f (issue #595), 2026-01-28"
+
+  auto_init_and_project_storage:
+    when: First database access / determining storage location
+    auto_init: "Check tableExists('indexed_files'); if !readonly && !exists, exec(sqlite-schema.sql)"
+    path_resolution: |
+      1. Explicit config.path (testing/CI)
+      2. KOTADB_PATH env var (deployments)
+      3. findProjectRoot() + .kotadb/kota.db (walk up looking for .git)
+    gitignore: "ensureKotadbIgnored() auto-adds '.kotadb/' (non-fatal on error)"
+    evidence: "Commits 2032801 (issue #574), d669841 (issue #592), 2026-01-28"
+
+  recursive_cte_dependencies:
+    when: Traversing dependency graphs (dependents/dependencies)
+    pattern: |
+      WITH RECURSIVE dependents AS (
+        SELECT f.id, f.path, 1 AS depth, '/' || f.id || '/' AS path_tracker
+        FROM indexed_references r JOIN indexed_files f ON r.file_id = f.id
+        WHERE r.reference_type = 'import' AND r.repository_id = ? AND r.target_file_path = ?
+        UNION ALL
+        SELECT f2.id, f2.path, d.depth + 1, d.path_tracker || f2.id || '/'
+        FROM indexed_references r2 JOIN indexed_files f2 ON r2.file_id = f2.id
+        JOIN indexed_files target2 ON r2.target_file_path = target2.path
+        JOIN dependents d ON target2.id = d.file_id
+        WHERE r2.reference_type = 'import' AND r2.repository_id = ? AND d.depth < ?
+        AND INSTR(d.path_tracker, '/' || f2.id || '/') = 0  -- cycle detection
+      ) SELECT DISTINCT file_path, depth FROM dependents ORDER BY depth, file_path
+    techniques:
+      - "path_tracker: String accumulator for cycle detection via INSTR check"
+      - "depth limit: d.depth < max_depth prevents infinite recursion"
+      - "repository_id: Scopes to specific repository"
+    evidence: "Commits 35e8b4c, 6055382, ba1e03a (Issue #37), 2026-01-29"
+
+  path_normalization:
+    when: Storing/comparing file paths
+    pattern: "path.replace(/\\\\/g, '/').replace(/^\\//, '').replace(/^\\.\\//, '')"
+    rules:
+      - No leading slashes
+      - Forward slashes only
+      - No ./ prefix
+    critical: Required for recursive CTE joins on target_file_path
+    evidence: "Commit 35e8b4c, queries.ts:23-50, 2026-01-29"
+
+  indexing_strategies:
+    partial:
+      pattern: "CREATE INDEX idx ON tbl(col) WHERE col IS NOT NULL"
+      use_case: Nullable columns where queries filter by non-NULL
+    composite:
+      pattern: "CREATE INDEX idx ON tbl(filter_col, join_col) WHERE filter_col = 'value'"
+      use_case: Multi-column queries
+    benefits:
+      - Smaller size
+      - Faster maintenance
+      - Better selectivity
+    evidence: "Commit 3d7d5b3, 2026-01-29"
+
+  single_source_of_truth:
+    when: Avoiding duplicate storage tables
+    anti_pattern: Separate dependency_graph table duplicating indexed_references
+    better: Single table with proper indexes + recursive CTEs
+    migration: Add indexes, rewrite queries with CTEs, verify tests, remove unused table
+    evidence: "Commit ba1e03a (~650 lines deleted), 2026-01-29"
+    lessons:
+      - "Remove unused tables aggressively to reduce maintenance burden"
+      - "Consolidate related operations into fewer, well-indexed tables"
+      - "Trust recursive CTEs over separate materialized dependency graphs"
+
+  deletion_manifest_security:
+    when: Tracking deletions in sync operations
+    pattern: |
+      const ALLOWED_DELETION_TABLES = ['repositories', 'indexed_files', ...] as const;
+      type AllowedDeletionTable = typeof ALLOWED_DELETION_TABLES[number];
+      function validateDeletionTableName(name: string): asserts name is AllowedDeletionTable {
+        if (!ALLOWED_DELETION_TABLES.includes(name)) throw new SecurityError(...);
+      }
+    security_controls:
+      - "Whitelist table names with readonly const array"
+      - "Type-safe table validation using TypeScript asserts"
+      - "Manifest size limits (10MB max) to prevent DoS"
+      - "Error rate thresholds (>10% errors = potential attack)"
+      - "Template literals safe only with validated table names"
+    evidence: "app/src/sync/deletion-manifest.ts, 2026-02-02"
+
+  sync_architecture_jsonl:
+    when: Implementing database synchronization
+    problem: "JSONL export only captures current state, deletions are invisible"
+    solution: ".deletions.jsonl manifest tracks explicit deletions"
+    lifecycle: |
+      1. Export: Record deletions in manifest during export
+      2. Git: Manifest syncs like any other file
+      3. Import: Apply deletions before importing new data
+      4. Cleanup: Clear manifest after successful import
+    patterns:
+      - "Append-only manifest with ISO timestamps"
+      - "Batch deletions by table in single transaction"
+      - "Defense-in-depth: whitelist + table existence check"
+    evidence: "app/src/sync/deletion-manifest.ts, 2026-02-02"
+
+  repository_resolution:
+    when: MCP tools accepting repository parameters
+    pattern: |
+      // Support both UUID and full_name formats
+      import { resolveRepositoryIdentifierWithError } from "@mcp/repository-resolver";
+      
+      const repoResult = resolveRepositoryIdentifierWithError(params.repository);
+      if ("error" in repoResult) {
+        return { error: repoResult.error };
+      }
+      const repositoryId = repoResult.id;
+    fallback: "If no repository provided, fall back to most recently created repo"
+    validation: "UUID regex: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i"
+    error_messages:
+      - "No repositories found. Please index a repository first using index_repository tool."
+      - "Repository not found: {identifier}. Use a valid repository UUID or full_name."
+    evidence: "Commits 60b4997, 9adc86f (issue #137), app/src/mcp/repository-resolver.ts, 2026-02-03"
+
+  cascade_deletion_with_fts5:
+    when: Deleting indexed files and their dependent data
+    pattern: |
+      // Schema with CASCADE
+      CREATE TABLE indexed_files (...);
+      CREATE TABLE indexed_symbols (
+        file_id TEXT NOT NULL,
+        FOREIGN KEY (file_id) REFERENCES indexed_files(id) ON DELETE CASCADE
+      );
+      
+      // FTS5 triggers auto-cleanup on base table DELETE
+      CREATE TRIGGER indexed_files_fts_ad AFTER DELETE ON indexed_files BEGIN
+        INSERT INTO indexed_files_fts(indexed_files_fts, rowid, ...) 
+        VALUES ('delete', old.rowid, ...);
+      END;
+      
+      // TypeScript deletion
+      db.run(`DELETE FROM indexed_files WHERE id = ?`, [fileId]);
+      // Automatically deletes: symbols, references, FTS5 entries
+    benefits:
+      - "Single DELETE statement cleans up entire dependency tree"
+      - "FTS5 triggers maintain search index consistency"
+      - "No manual cleanup needed for child tables"
+    evidence: "app/src/api/queries.ts deleteFileByPath(), commit aa4fcf4, 2026-02-03"
+
+  batch_deletion_transactional:
+    when: Deleting multiple files atomically
+    pattern: |
+      function deleteFilesByPaths(repoId: string, paths: string[]): DeleteResult {
+        const deleted: string[] = [];
+        db.transaction(() => {
+          for (const path of paths) {
+            const file = db.queryOne<{ id }>(
+              `SELECT id FROM indexed_files WHERE repository_id = ? AND path = ?`,
+              [repoId, normalizePath(path)]
+            );
+            if (file) {
+              db.run(`DELETE FROM indexed_files WHERE id = ?`, [file.id]);
+              deleted.push(path);
+            }
+          }
+        });
+        return { deletedCount: deleted.length, deletedPaths: deleted };
+      }
+    benefits:
+      - "All-or-nothing: either all files deleted or none"
+      - "Consistent state even if error mid-batch"
+      - "Single WAL checkpoint instead of N checkpoints"
+    evidence: "app/src/api/queries.ts deleteFilesByPathsInternal(), commit aa4fcf4, 2026-02-03"
+
+  internal_external_function_pattern:
+    when: Writing database functions that need testability
+    pattern: |
+      // Internal version accepts db for testing
+      function operationInternal(db: KotaDatabase, params...): Result {
+        return db.query(...);
+      }
+      
+      // Public version uses global database
+      export function operation(params...): Result {
+        return operationInternal(getGlobalDatabase(), params);
+      }
+      
+      // Test version explicitly accepts db
+      export function operationLocal(db: KotaDatabase, params...): Result {
+        return operationInternal(db, params);
+      }
+    benefits:
+      - "Tests can inject in-memory database"
+      - "Production code uses singleton global db"
+      - "Single implementation, multiple interfaces"
+    naming: "*Internal() for impl, *() for production, *Local() for tests"
+    evidence: "app/src/api/queries.ts pattern throughout, 2026-02-03"
+
+
+  migration_runner_pattern:
+    when: Managing schema versioning and drift detection across database lifecycle
+    pattern: |
+      // File: app/src/db/sqlite/migration-runner.ts
+      interface Migration {
+        filename: string;
+        name: string;           // e.g., "006_add_migration_checksums"
+        number: number;
+        path: string;
+        content: string;
+        checksum: string;       // SHA-256 of file content
+      }
+      
+      // Core workflow:
+      1. scanMigrations(dir) -> find .sql files, parse {number, name}, compute SHA-256
+      2. getAppliedMigrations(db) -> query schema_migrations table with optional checksum
+      3. runMigrations(db, dir) -> apply pending, skip applied, detect drift
+      4. validateChecksum() -> compare file SHA-256 to stored value (drift detection)
+      5. applyMigration() -> execute SQL in transaction, record name + checksum
+    
+    key_operations: |
+      // Filename parsing: NNN_description.sql -> {number: NNN, name: "NNN_description"}
+      const match = filename.match(/^(\d+)_(.+)\.sql$/);
+      
+      // Drift detection: if migration file changed after being applied
+      if (migration.checksum !== applied.checksum) {
+        logger.warn("Migration checksum mismatch (DRIFT DETECTED)");
+        result.driftDetected = true;
+      }
+      
+      // Backward compatibility: old migrations may not have checksums (NULL OK)
+      if (!applied.checksum) {
+        logger.debug("No checksum stored for migration (skipping validation)");
+        return true;  // Legacy migrations pass validation
+      }
+      
+      // Transactional safety: single migration applies atomically
+      db.immediateTransaction(() => {
+        db.exec(migration.content);
+        db.run(
+          "INSERT OR REPLACE INTO schema_migrations (name, checksum, applied_at) VALUES (?, ?, datetime('now'))",
+          [migration.name, migration.checksum]
+        );
+      });
+      
+      // Column detection: handle transition from old schema (no checksum) to new
+      const columns = db.query("SELECT name FROM pragma_table_info('schema_migrations')");
+      const hasChecksum = columns.some((c) => c.name === "checksum");
+      // Conditional INSERT based on column existence
+    
+    benefits: |
+      - Filesystem as source of truth (no hardcoding version numbers)
+      - SHA-256 checksums detect accidental schema_migrations table modifications
+      - Alphabetical file sorting ensures numeric order (001, 002, ..., 010, 011)
+      - Backward compatible: old migrations without checksums skip validation
+      - Transactional: single failure rolls back entire migration
+      - Stop-on-failure: prevents cascading errors from bad migrations
+      - Idempotent: already-applied migrations skipped safely
+    
+    testing_coverage: |
+      // 28 tests in app/src/db/sqlite/__tests__/migration-runner.test.ts:
+      - parseMigrationFilename: valid/invalid formats, multi-digit numbers, underscores
+      - computeChecksum: consistency, 64-char SHA-256 hex output, content variance
+      - scanMigrations: file sorting, checksum inclusion, invalid file handling, empty dir
+      - getAppliedMigrations: with/without checksum column, empty table, missing table
+      - validateChecksum: match/mismatch, legacy NULL handling
+      - applyMigration: successful apply + record, rollback on failure
+      - runMigrations: in-order execution, skip applied, detect drift, stop on error, empty
+      - updateExistingChecksums: backfill NULL checksums, preserve existing
+    
+    schema_evolution: |
+      // Migration 006_add_migration_checksums.sql: adds checksum column retroactively
+      ALTER TABLE schema_migrations ADD COLUMN checksum TEXT;
+      
+      // Use updateExistingChecksums(db, migrationsDir) to backfill old records
+      // This bridges the gap: old migrations without checksums -> checksummed records
+      // Existing records keep their NULL checksums (legacy mode)
+      // New migrations always store checksums for drift detection
+    
+    integration: |
+      // In sqlite-client.ts:
+      - Called from createDatabase() after schema_init
+      - Runs before any user code accesses database
+      - Failures throw and prevent database use
+      - Lazy: only on database open, not on every query
+    
+    evidence: "Commit group: migration infrastructure (#166, #167); files: migration-runner.ts (336 lines), migration-runner.test.ts (493 lines), 006_add_migration_checksums.sql, 2026-02-04"
+
+  memory_layer_schema:
+    when: Implementing cross-session agent learning
+    tables:
+      decisions:
+        purpose: "Record architectural and design decisions"
+        fts5_columns: "title, context, decision, rationale"
+        scope_enum: "architecture | pattern | convention | workaround"
+      failures:
+        purpose: "Track failed approaches to avoid repeating mistakes"
+        fts5_columns: "title, problem, approach, failure_reason"
+      patterns:
+        purpose: "Store detected codebase patterns with examples"
+        indexed_on: "pattern_type, file_path"
+      insights:
+        purpose: "Session discoveries and workarounds"
+        fts5_columns: "content"
+        type_enum: "discovery | failure | workaround"
+    common_patterns:
+      - "All tables have optional repository_id FK with CASCADE"
+      - "JSON arrays in TEXT for alternatives/related_files"
+      - "FTS5 virtual tables for searchability"
+      - "Automatic FTS5 sync via ai/ad/au triggers"
+    evidence: "Commit 25ecbc2 (issue #99), app/src/db/sqlite-schema.sql section 10, 2026-02-03"
+
+  wal_configuration:
+    pragmas: |
+      PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = 30000;
+      PRAGMA synchronous = NORMAL;
+      PRAGMA cache_size = -64000;
+      PRAGMA foreign_keys = ON;
+    pool: "Single writer (read-write), N readers (readonly), round-robin selection"
+
+  migrations:
+    approach: |
+      1. Check PRAGMA user_version
+      2. CREATE TABLE/INDEX IF NOT EXISTS (idempotent)
+      3. db.transaction(() => { db.exec(sql); db.setSchemaVersion(v); })
+      4. Record in schema_migrations table
+    modern_approach: |
+      NEW (2026-02-04): Use migration_runner_pattern instead of manual versioning.
+      The migration-runner module handles:
+      - Filesystem-driven migration discovery (NNN_description.sql format)
+      - Automatic SHA-256 checksum computation and storage
+      - Drift detection (file modified after application)
+      - Backward compatibility (skips validation for old migrations without checksums)
+      - Transactional safety and stop-on-failure semantics
+      See: migration_runner_pattern key_operation above
+
+decision_trees:
+  fts5_vs_like:
+    - condition: File content search
+      use: "FTS5 (ranking, snippets, O(log n))"
+    - condition: Exact column values
+      use: "LIKE with index"
+    - condition: Complex patterns
+      use: "LIKE '%pattern%' (full scan)"
+
+  index_selection:
+    - condition: Single column equality
+      use: B-tree index
+    - condition: Multi-column queries
+      use: "Composite (selective column first)"
+    - condition: Filtered subset
+      use: Partial index with WHERE
+    - condition: Full-text
+      use: FTS5 virtual table
+    - condition: JSON access
+      use: Expression index on json_extract()
+
+  transaction_type:
+    - condition: Read-only
+      use: autocommit
+    - condition: Single write
+      use: db.run()
+    - condition: Multiple writes
+      use: db.transaction()
+    - condition: Must not fail
+      use: db.immediateTransaction()
+
+patterns:
+  external_content_fts5:
+    structure: "FTS5 with content='base_table' + sync triggers (ai/ad/au)"
+    trade_offs:
+      pros:
+        - No duplicate storage
+        - Auto sync
+      cons:
+        - Trigger overhead
+
+  connection_pool:
+    structure: "1 writer + N readers (cpus().length), round-robin"
+    usage: "pool.write(db => ...), pool.read(db => ...)"
+
+  batch_insert:
+    structure: "db.transaction(() => { const stmt = db.prepare(...); for (r of records) stmt.run(...); })"
+
+best_practices:
+  schema:
+    - TEXT UUIDs (36 chars)
+    - TEXT ISO 8601 timestamps
+    - INTEGER booleans
+    - CHECK for enums
+    - indexes on FKs
+    - ON DELETE CASCADE
+
+  queries:
+    - Parameterized only
+    - escapeFts5Term() always
+    - batch in transactions
+    - IMMEDIATE for writes
+
+  security:
+    - Whitelist table names for dynamic SQL
+    - Validate all user inputs with type assertions
+    - Size limits on external files (manifests, imports)
+    - Error rate monitoring for attack detection
+
+  connections:
+    - Pool pattern
+    - single writer
+    - WAL mode
+    - 30s busy_timeout
+    - close on shutdown
+
+  performance:
+    - Covering indexes
+    - partial indexes
+    - EXPLAIN QUERY PLAN
+    - periodic WAL checkpoint
+
+  migrations:
+    - IF NOT EXISTS
+    - PRAGMA user_version
+    - schema_migrations table
+    - test rollback
+
+  testability:
+    - Internal/External function pattern
+    - Test functions accept db parameter
+    - Production functions use getGlobalDatabase()
+    - Name test variants with *Local suffix
+
+known_issues:
+  - issue: FTS5 syntax errors with hyphens/multi-word
+    resolution: "escapeFts5Term() (commit 5af086f)"
+
+  - issue: SQLite no ALTER COLUMN type
+    resolution: "New column, migrate, drop old"
+
+  - issue: WAL requires filesystem support
+    resolution: "Check compatibility, fallback to default journal"
+
+  - issue: Large transactions grow WAL
+    resolution: "Checkpoint periodically, smaller batches"
+
+stability:
+  last_reviewed: 2026-02-04
+  insight_rate_trend: accelerating
+  contradiction_count: 0
+  notes: |
+    Latest update (2026-02-04) - migration infrastructure redesign:
+    - Migration Runner Pattern: filesystem-driven migrations with SHA-256 drift detection
+    - Schema Evolution: graceful column addition with backward-compatible validation
+    - Testing: 28 comprehensive tests covering filename parsing, checksums, drift detection
+    - Integration: automatic execution on database open, failure prevention
+    
+    Major update (2026-02-03) - added patterns from auto-indexing and memory layer:
+    - Repository resolution: UUID vs full_name flexibility with helpful errors
+    - CASCADE deletion with FTS5: Single DELETE cleans up all dependencies
+    - Batch deletion transactional: All-or-nothing multi-file deletion
+    - Internal/External function pattern: Testability via db parameter injection
+    - Memory layer schema: decisions, failures, patterns, insights tables with FTS5
+    
+    Previous update (2026-02-02) - sync and security patterns:
+    - Deletion manifest security controls (whitelist, validation, DoS protection)
+    - JSONL sync architecture with explicit deletion tracking
+    - Single source of truth lessons learned from dependency_graph removal
+    
+    Consolidated (2026-01-30):
+    - FTS5 + escapeFts5Term (issue #595)
+    - Auto-init schema (issue #574)
+    - Project-local storage (issue #592)
+    - Recursive CTE dependencies (issue #37)
+    - Path normalization, partial/composite indexes

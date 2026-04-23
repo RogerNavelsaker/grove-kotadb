@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["bun-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@api/*": ["../app/src/api/*"],
+      "@auth/*": ["../app/src/auth/*"],
+      "@config/*": ["../app/src/config/*"],
+      "@db/*": ["../app/src/db/*"],
+      "@indexer/*": ["../app/src/indexer/*"],
+      "@shared/*": ["../app/shared/*"],
+      "@mcp/*": ["../app/src/mcp/*"],
+      "@validation/*": ["../app/src/validation/*"],
+      "@app-types/*": ["../app/src/types/*"],
+      "@logging/*": ["../app/src/logging/*"],
+      "@sync/*": ["../app/src/sync/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

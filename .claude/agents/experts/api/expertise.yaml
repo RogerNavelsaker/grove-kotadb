@@ -1,0 +1,414 @@
+# KotaDB API Expert Knowledge
+# Target: 600-800 lines | Domain: Operational knowledge for API development
+# Adapted for KotaDB local-only architecture
+
+overview:
+  description: |
+    KotaDB API expertise covering Express HTTP server patterns, MCP SDK integration with
+    StreamableHTTPServerTransport and StdioServerTransport, OpenAPI specification generation, 
+    CLI entry point, and query layer patterns. This expertise enables correct API endpoint, 
+    MCP tool, and CLI command implementation within KotaDB's local-only, SQLite-based architecture.
+  scope: |
+    Covers Express app structure (app/src/api/), route patterns, MCP server and transport
+    configuration (stdio and HTTP), MCP tool definitions and executors, OpenAPI spec generation 
+    with Zod schemas, CLI entry point (app/src/cli.ts), query layer functions for SQLite, and 
+    middleware patterns.
+
+    KOTADB ADAPTATIONS:
+    - Local-only mode (no Supabase, no cloud auth)
+    - SQLite database via getGlobalDatabase()
+    - Authentication bypassed in local mode
+    - Synchronous operations (no queue)
+    - MCP supports StdioServerTransport (recommended) and StreamableHTTPServerTransport
+    - Path aliases (@api/*, @mcp/*, @db/*, @logging/*, etc.)
+    - Logging via process.stdout.write (never console.*), forceStderr for stdio mode
+    - CLI entry point via bin field in package.json
+  rationale: |
+    Consistent API implementation enables reliable MCP tool usage and proper endpoint design.
+    CLI patterns ensure seamless npm package distribution. Poor structure leads to 
+    inconsistent responses, broken tool contracts, and difficult debugging.
+
+core_implementation:
+  key_files:
+    - path: app/src/cli.ts
+      purpose: CLI entry point - argument parsing, server startup, graceful shutdown, stdio transport
+    - path: app/src/api/routes.ts
+      purpose: Express app factory - createExpressApp()
+    - path: app/src/api/queries.ts
+      purpose: SQLite query functions - searchFiles, listRecentFiles, runIndexingWorkflow
+    - path: app/src/mcp/server.ts
+      purpose: MCP Server factory - createMcpServer(), createMcpTransport()
+    - path: app/src/mcp/tools.ts
+      purpose: MCP tool definitions and executors
+    - path: app/src/api/openapi/builder.ts
+      purpose: OpenAPI 3.1 spec generator
+    - path: app/src/logging/logger.ts
+      purpose: Structured logging with stderr routing support
+
+key_operations:
+  create_cli_entry_point:
+    when: Creating npm bin entry point for distributed package
+    approach: |
+      1. Create app/src/cli.ts with #!/usr/bin/env bun shebang (first line, no BOM)
+      2. Implement getVersion() reading package.json at runtime
+      3. Implement parseArgs() for --help, --version, --port, --stdio flags
+      4. Set up graceful shutdown handlers (HTTP mode): SIGTERM/SIGINT -> close -> exit(0) or timeout exit(1)
+      5. Export in package.json bin field: { "kotadb": "./src/cli.ts" }
+    timestamp: 2026-01-28
+    evidence: app/src/cli.ts
+    key_patterns:
+      - Runtime version resolution from package.json
+      - 10-second forced shutdown timeout (HTTP mode)
+      - process.stdout.write (not console.log)
+
+  implement_mcp_stdio_transport:
+    when: Adding stdio transport for MCP server (Claude Code integration)
+    approach: |
+      1. Import StdioServerTransport from @modelcontextprotocol/sdk/server/stdio.js
+      2. Create runStdioMode() with logger forceStderr: true (CRITICAL - stdout reserved for JSON-RPC)
+      3. Connect server to transport via server.connect(transport)
+      4. No shutdown handlers needed (transport manages lifecycle via stdin close)
+    timestamp: 2026-01-29
+    evidence: app/src/cli.ts, app/src/logging/logger.ts
+    key_patterns:
+      - forceStderr: true prevents stdout pollution
+      - Transport lifecycle management (no manual shutdown)
+
+  add_contextual_search_tips:
+    when: Enhancing MCP search tool to guide LLM users toward better search strategies
+    approach: |
+      1. Create generateSearchTips() with static pattern matching (regex + keywords)
+      2. Implement 10 triggers: structural keywords, file paths, large results, scope suggestions
+      3. Return string[] of tips, add to response if non-empty
+      4. MODERATE frequency (balance education with avoiding noise)
+    timestamp: 2026-02-04
+    evidence: app/src/mcp/tools.ts generateSearchTips (lines 978-1084)
+    key_patterns:
+      - Static matching (<1ms performance)
+      - Result-aware (check counts before suggesting filters)
+      - Educational tone ("Try X" not "You should X")
+
+  add_statistics_tool:
+    when: Adding MCP tool to expose index statistics for capability discovery
+    approach: |
+      1. Create GET_INDEX_STATISTICS_TOOL (tier: "core")
+      2. Implement getIndexStatisticsInternal(db) with safeCount(tableName) helper
+      3. Use try-catch per table: return 0 for missing tables (graceful degradation)
+      4. Count core + memory layer tables: files, symbols, references, decisions, patterns, failures
+    timestamp: 2026-02-04
+    evidence: app/src/api/queries.ts (lines 1412-1483), app/src/mcp/tools.ts
+    key_patterns:
+      - Safe table counting for schema evolution
+      - Internal function with db param (testable)
+
+  extend_hook_with_capability_context:
+    when: Enhancing SubagentStart hook to provide KotaDB capability context at agent startup
+    approach: |
+      1. Create get_kotadb_capabilities_context() calling kotadb --stdio
+      2. Query get_index_statistics tool via JSON-RPC subprocess
+      3. Format markdown with indexed data summary, "when to use KotaDB" guide
+      4. Combine with dependency context: capability (always) + dependencies (if files mentioned)
+      5. Silent failure: return empty string if KotaDB unavailable
+    timestamp: 2026-02-04
+    evidence: .claude/hooks/kotadb/agent-context.py (lines 57-240)
+    key_patterns:
+      - Subprocess JSON-RPC communication
+      - Context combination pattern
+      - Always provide capability context (not file-dependent)
+
+  implement_snippet_output_mode:
+    when: Adding snippet output mode for code search (line-based match extraction with context)
+    approach: |
+      1. Create extractLineSnippets(content, query, contextLines) in queries.ts
+      2. Case-insensitive line matching, collect line number + content + context arrays
+      3. Add 'snippet' to output enum, add context_lines parameter (0-10 range validation)
+      4. Update formatSearchResults() to handle snippet mode for code scope
+      5. Fall back to compact format for non-code scopes (snippets only meaningful for files)
+      6. Update tool description with output mode hierarchy and size warnings
+    timestamp: 2026-02-04
+    evidence: app/src/api/queries.ts extractLineSnippets, app/src/mcp/tools.ts SEARCH_TOOL
+    key_patterns:
+      - Output hierarchy: paths (100B) < compact (200B) < snippet (2KB) < full (100KB)
+      - Scope-specific defaults: code='compact', others='full'
+      - Graceful degradation: non-code scopes use compact in snippet mode
+      - Parameter validation: 0-10 range for context_lines with clear error messages
+
+  scope_specific_output_defaults:
+    when: Choosing default output modes based on search scope characteristics
+    approach: |
+      1. Analyze typical result sizes per scope (code=large, symbols=small)
+      2. Default code scope to 'compact' (prevents large responses)
+      3. Default other scopes to 'full' (small payloads, rich detail useful)
+      4. Document rationale in tool description with size warnings
+    timestamp: 2026-02-04
+    evidence: app/src/mcp/tools.ts executeSearch default output selection
+    key_patterns:
+      - Code scope: default='compact' (file content can be 100KB+)
+      - Symbols/decisions/patterns/failures: default='full' (structured, small)
+      - Explicit warning in description: "WARNING: 'full' + code scope = large results"
+
+  consolidate_multi_scope_search:
+    when: Reducing API surface by consolidating multiple search tools into unified multi-scope tool
+    approach: |
+      1. Define unified search tool with scope array: ["code", "symbols", "decisions", "patterns", "failures"]
+      2. Implement normalizeFilters(): silently drop invalid filters, resolve repository
+      3. Execute scopes in parallel via Promise.all()
+      4. Support output formats: full, paths, compact, snippet
+    timestamp: 2026-02-03
+    evidence: app/src/mcp/tools.ts (lines 104-1278)
+    key_patterns:
+      - Parallel execution (2-3x faster)
+      - Silent filter dropping (graceful LLM parameter handling)
+      - LIKE-based symbol search (fuzzy matching)
+
+  implement_tool_tier_filtering:
+    when: Adding CLI-based tool filtering (core, default, memory, full tiers)
+    approach: |
+      1. Define ToolTier enum: "core" | "sync" | "memory" | "expertise"
+      2. Tag tools with tier, create filterToolsByTier() with hierarchical inclusion
+      3. Add --toolset CLI flag, pass via McpServerContext.toolset
+      4. Filter tools in ListToolsRequestSchema handler
+    timestamp: 2026-02-03
+    evidence: app/src/mcp/tools.ts, app/src/mcp/server.ts, app/src/cli/args.ts
+    key_patterns:
+      - Separate ToolTier (internal) from ToolsetTier (user-facing)
+      - Hierarchical: core ⊂ default ⊂ memory ⊂ full
+
+  resolve_flexible_repository_identifiers:
+    when: Adding support for repository identification by full_name OR UUID
+    approach: |
+      1. Create resolveRepositoryIdentifierWithError() helper
+      2. Try UUID first: SELECT * FROM repositories WHERE id = ?
+      3. Fall back to full_name: SELECT * FROM repositories WHERE full_name = ?
+      4. Use in executors before query calls, pass resolved UUID to queries
+    timestamp: 2026-02-03
+    evidence: Commit 9adc86f, app/src/api/queries.ts, app/src/mcp/tools.ts
+    key_patterns:
+      - Try-fallback pattern (UUID first, then full_name)
+      - Resolution at executor boundary (not query layer)
+
+
+  implement_mcp_tool:
+    when: Adding a new MCP tool to the server
+    approach: |
+      1. Define tool in tools.ts: Create TOOL_NAME_TOOL constant with ToolDefinition
+      2. Implement executor: Create executeTOOLNAME() function with parameter validation
+      3. Export both: Add tool to getToolDefinitions() array
+      4. Add routing: CRITICAL - Add case handler in server.ts switch statement
+      5. Verify routing: Tool must be in CallToolRequestSchema handler's switch
+    timestamp: 2026-02-05
+    evidence: Issue #170, Commit 5b0611b, app/src/mcp/server.ts lines 197-203
+    key_patterns:
+      - Three-layer implementation: definition + executor + routing
+      - Routing omission causes "Unknown tool" runtime error despite full implementation
+      - Tests cover executor but not routing layer (architectural gap)
+      - Case name must exactly match tool definition name field
+patterns:
+  contextual_search_tips_pattern:
+    structure: |
+      function generateSearchTips(query, scopes, filters, scopeResults): string[] {
+        // Detect patterns: structural keywords, file paths, large results
+        // Suggest: scope additions, filters, output formats
+        return tips; // Empty if optimal
+      }
+      
+      function formatSearchResults(...) {
+        const tips = generateSearchTips(...);
+        if (tips.length > 0) response.tips = tips;
+      }
+    timestamp: 2026-02-04
+    evidence: app/src/mcp/tools.ts lines 978-1143
+
+  safe_table_counting_pattern:
+    structure: |
+      function getStatsInternal(db) {
+        const safeCount = (table) => {
+          try { return db.queryOne(`SELECT COUNT(*) FROM ${table}`)?.count || 0; }
+          catch { return 0; } // Table doesn't exist
+        };
+        return { files: safeCount('indexed_files'), ... };
+      }
+    timestamp: 2026-02-04
+    evidence: app/src/api/queries.ts lines 1412-1483
+
+  hook_context_combination_pattern:
+    structure: |
+      capability_context = get_capabilities()  # Always
+      dep_context = get_dependencies() if files_mentioned  # Conditional
+      output_context("\n\n".join([capability_context, dep_context]))
+    timestamp: 2026-02-04
+    evidence: .claude/hooks/kotadb/agent-context.py lines 179-240
+
+  snippet_extraction_pattern:
+    structure: |
+      export function extractLineSnippets(content, query, contextLines): SnippetMatch[] {
+        const lines = content.split("\n");
+        const lowerQuery = query.toLowerCase();
+        const matches: SnippetMatch[] = [];
+        
+        lines.forEach((line, index) => {
+          if (line.toLowerCase().includes(lowerQuery)) {
+            const start = Math.max(0, index - contextLines);
+            const end = Math.min(lines.length, index + contextLines + 1);
+            matches.push({
+              line: index + 1,  // 1-indexed
+              content: line,
+              context_before: lines.slice(start, index),
+              context_after: lines.slice(index + 1, end)
+            });
+          }
+        });
+        return matches;
+      }
+    timestamp: 2026-02-04
+    evidence: app/src/api/queries.ts lines 1486-1514, app/src/api/__tests__/queries-sqlite.test.ts
+
+  output_mode_size_guidance_pattern:
+    structure: |
+      Tool description template:
+      """
+      OUTPUT MODES:
+      - 'paths': File paths only (~100 bytes/result)
+      - 'compact': Summary info (~200 bytes/result) - DEFAULT for code scope
+      - 'snippet': Matching lines with context (~2KB/result)
+      - 'full': Complete content (~100KB/result) - Use with caution for code scope
+      
+      TIPS:
+      - Use 'snippet' for code exploration (shows matches in context)
+      - Use 'compact' for quick file discovery
+      - Use 'full' only for small result sets (symbols, decisions, etc.)
+      """
+    timestamp: 2026-02-04
+    evidence: app/src/mcp/tools.ts SEARCH_TOOL description
+
+  multi_scope_search_pattern:
+    structure: |
+      async function executeSearch(params) {
+        const scopes = params.scope || ['code'];
+        const filters = normalizeFilters(params.filters); // Silent drop invalid
+        const results = await Promise.all(scopes.map(s => searchScope(s, filters)));
+        return formatSearchResults(query, scopes, results, output);
+      }
+    timestamp: 2026-02-03
+    evidence: app/src/mcp/tools.ts lines 111-1278
+
+  mcp_tool_routing_pattern:
+    structure: |
+      // tools.ts - Tool definitions array
+      export function getToolDefinitions(): ToolDefinition[] {
+        return [
+          SEARCH_TOOL,
+          GET_INDEX_STATISTICS_TOOL,  // Tool definition must be exported here
+          // ... other tools
+        ];
+      }
+      
+      // tools.ts - Executor function
+      export async function executeGetIndexStatistics(args, requestId, userId) {
+        // Implementation
+      }
+      
+      // server.ts - CRITICAL: Routing layer (often forgotten)
+      switch (name) {
+        case "search":
+          result = await executeSearch(toolArgs, "", context.userId);
+          break;
+        case "get_index_statistics":  // Must match tool definition name exactly
+          result = await executeGetIndexStatistics(toolArgs, "", context.userId);
+          break;
+        default:
+          throw new Error(`Unknown tool: ${name}`);
+      }
+    timestamp: 2026-02-05
+    evidence: Issue #170, app/src/mcp/server.ts lines 141-260
+    failure_mode: |
+      Tool fully implemented but missing case handler -> runtime "Unknown tool" error
+      Tests cover executor (works) but not routing (fails in production)
+
+best_practices:
+  cli: |
+    - Shebang: #!/usr/bin/env bun (first line, no BOM)
+    - Version from package.json at runtime
+    - Shutdown handlers (HTTP only): 10s timeout
+
+  mcp: |
+    - Tool descriptions explain when/why
+    - Validate all parameters with clear error messages
+    - Add contextual tips for education
+    - forceStderr: true in stdio mode
+    - Document output modes with size guidance
+    - CRITICAL: Always add case handler in server.ts switch when adding tools
+    - Verify tool name in case matches tool definition name exactly
+
+  queries: |
+    - Internal functions: db param (testable)
+    - Public functions: getGlobalDatabase()
+    - Safe table counting for optional tables
+    - escapeFts5Term() for user input
+    - Export utility functions for reuse (extractLineSnippets)
+
+  testing: |
+    - Parameter validation + edge cases
+    - KOTADB_PATH for integration tests
+    - Document private functions via tests (not unit testing internals)
+    - Test boundary conditions (file start/end for snippets)
+
+  hooks: |
+    - Always provide capability context (not file-dependent)
+    - Combine contexts with "\n\n" separator
+    - Silent failure: return empty string
+
+known_issues:
+  - issue: FTS5 syntax errors from unescaped input
+    status: resolved (2026-01-28)
+    resolution: Always use escapeFts5Term() before MATCH
+
+  - issue: npm package missing tsconfig.json
+    status: resolved (2026-01-29)
+    resolution: Include tsconfig.json in files array
+
+  - issue: MCP server port conflicts
+    status: resolved (2026-01-29)
+    resolution: Stdio transport (no TCP ports)
+
+  - issue: OpenAPI spec drift
+    status: resolved (2026-02-02)
+    resolution: Audit during refactors, implement-first pattern
+
+  - issue: MCP tool routing omission (get_index_statistics missing case handler)
+    status: resolved (2026-02-05)
+    resolution: Added case handler in server.ts switch statement
+    evidence: Issue #170, Commit 5b0611b
+    learning: |
+      Tool was fully implemented (definition + executor + exported) but missing
+      from server.ts routing switch. Caused "Unknown tool" error at runtime.
+      Tests covered executor but not routing layer. Added implement_mcp_tool
+      operation and mcp_tool_routing_pattern to prevent recurrence.
+stability:
+  convergence_indicators:
+    insight_rate_trend: stable_to_increasing
+    contradiction_count: 0
+    new_patterns_added_this_cycle: 1
+    new_operations_added_this_cycle: 1
+    last_reviewed: 2026-02-05
+    utility_ratio: 1.0
+    notes: |
+      Thirteenth cycle - MCP tool routing pattern from issue #170:
+      
+      New operations: implement_mcp_tool
+      New patterns: mcp_tool_routing_pattern
+      
+      Key learnings:
+      - Three-layer MCP tool implementation: definition + executor + routing
+      - Routing omission causes "Unknown tool" runtime error despite full implementation
+      - Test coverage gap: executors tested, routing layer not tested
+      - Prevention: Added critical reminder to best_practices.mcp
+      
+      Size governance:
+      - Previous: 355 lines
+      - After update: ~400 lines
+      - Status: Well within 600-800 line target, healthy growth
+      
+      Architecture: High stability, zero contradictions across 13 cycles
+      Pattern evolution: Identified architectural test gap (routing layer)
+      Next review: After next significant API pattern emerges or when approaching 600 lines

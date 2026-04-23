@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="kotadb Blog">
+  <meta name="author" content="kotadb">
+  <meta property="og:type" content="article">
+  <meta name="twitter:card" content="summary">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>Blog - kotadb</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/syntax.css">
+  <style>
+    .blog-post-header {
+      padding: var(--space-3xl) 0 var(--space-xl);
+      border-bottom: 1px solid var(--glass-border);
+    }
+    
+    .blog-post-header h1 {
+      margin-bottom: var(--space-sm);
+    }
+    
+    .blog-post-meta {
+      color: var(--color-text-muted);
+      font-size: var(--font-size-sm);
+    }
+    
+    .blog-post-content {
+      padding: var(--space-2xl) 0;
+      max-width: 48rem;
+      margin: 0 auto;
+    }
+    
+    .blog-post-content h1,
+    .blog-post-content h2,
+    .blog-post-content h3,
+    .blog-post-content h4 {
+      margin-top: var(--space-xl);
+    }
+    
+    .blog-post-content h1:first-child {
+      margin-top: 0;
+    }
+    
+    .blog-post-content p {
+      margin-bottom: var(--space-md);
+    }
+    
+    .blog-post-content ul,
+    .blog-post-content ol {
+      margin-bottom: var(--space-md);
+      padding-left: var(--space-xl);
+    }
+    
+    .blog-post-content li {
+      margin-bottom: var(--space-sm);
+    }
+    
+    .blog-post-content pre {
+      margin-bottom: var(--space-md);
+    }
+    
+    .blog-nav {
+      padding: var(--space-lg) 0;
+      border-top: 1px solid var(--glass-border);
+    }
+    
+    .blog-nav a {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-muted);
+    }
+    
+    .blog-nav a:hover {
+      color: var(--color-primary);
+    }
+    
+    .loading {
+      text-align: center;
+      padding: var(--space-3xl);
+      color: var(--color-text-muted);
+    }
+    
+    .error-message {
+      text-align: center;
+      padding: var(--space-3xl);
+    }
+    
+    .error-message h2 {
+      color: var(--color-text);
+      margin-bottom: var(--space-md);
+    }
+    
+    .error-message p {
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-lg);
+    }
+
+    /* Hide heading anchors by default, show on hover */
+    .blog-post-content .heading-anchor {
+      color: var(--color-text-muted);
+      text-decoration: none;
+      margin-right: var(--space-sm);
+      opacity: 0;
+      transition: opacity var(--transition-fast);
+    }
+
+    .blog-post-content h1:hover .heading-anchor,
+    .blog-post-content h2:hover .heading-anchor,
+    .blog-post-content h3:hover .heading-anchor,
+    .blog-post-content h4:hover .heading-anchor {
+      opacity: 1;
+    }
+
+    /* Hide duplicate H1 since title is in header */
+    #post-content > h1:first-child {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#22d3ee"/>
+              <stop offset="100%" stop-color="#0891b2"/>
+            </linearGradient>
+          </defs>
+          <rect x="8" y="8" width="12" height="64" rx="3" fill="url(#logoGrad)"/>
+          <polygon points="20,40 20,30 50,8 60,8 60,18 32,40" fill="#22d3ee" opacity="0.9"/>
+          <polygon points="20,40 20,50 50,72 60,72 60,62 32,40" fill="#0891b2" opacity="0.85"/>
+          <polygon points="25,40 48,20 55,20 55,27 35,40 55,53 55,60 48,60 25,40" fill="#22d3ee"/>
+        </svg>
+        <span class="logo-text">kota<span class="accent">db</span></span>
+      </a>
+      <nav class="main-nav">
+        <a href="/docs/">Docs</a>
+        <a href="/blog/">Blog</a>
+        <a href="https://github.com/jayminwest/kotadb" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div id="post-header" class="blog-post-header" style="display: none;">
+      <div class="container">
+        <h1 id="post-title"></h1>
+        <div id="post-meta" class="blog-post-meta"></div>
+      </div>
+    </div>
+
+    <section class="blog-post-content">
+      <div class="container">
+        <div id="post-content">
+          <div class="loading">Loading post...</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="blog-nav">
+      <div class="container">
+        <a href="/blog/">Back to all posts</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+        <p>2026 kotadb. Released under the <a href="https://github.com/jayminwest/kotadb/blob/main/LICENSE">MIT License</a>.</p>
+        <nav class="footer-nav">
+          <a href="https://github.com/jayminwest/kotadb" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/jayminwest/kotadb/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a>
+        </nav>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/lib/marked.min.js"></script>
+  <script type="module">
+    import { parseFrontmatter, initMarked, renderMarkdown } from '../js/render.js';
+    
+    const postMap = {
+      'launch-announcement': 'content/2026-01-15-launch-announcement.md',
+      'local-first-philosophy': 'content/2026-01-20-local-first-philosophy.md'
+    };
+    
+    function formatDate(dateStr) {
+      const date = new Date(dateStr + 'T00:00:00');
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    }
+    
+    function getSlugFromUrl() {
+      // Support both hash and query param for slug
+      const hash = window.location.hash.slice(1); if (hash) return decodeURIComponent(hash); const params = new URLSearchParams(window.location.search); return params.get('slug');
+    }
+    
+    function showError(message) {
+      const content = document.getElementById('post-content');
+      content.innerHTML = '<div class="error-message"><h2>Post Not Found</h2><p>' + message + '</p><a href="/blog/" class="btn btn-primary">Back to Blog</a></div>';
+    }
+    
+    async function loadPost() {
+      const slug = getSlugFromUrl();
+      
+      if (!slug) {
+        showError('No post specified. Please select a post from the blog index.');
+        return;
+      }
+      
+      const postPath = postMap[slug];
+      
+      if (!postPath) {
+        showError('The post "' + slug + '" could not be found.');
+        return;
+      }
+      
+      try {
+        const response = await fetch(postPath);
+        
+        if (!response.ok) {
+          showError('Unable to load the requested post. Please try again later.');
+          return;
+        }
+        
+        const rawContent = await response.text();
+        const { frontmatter, content } = parseFrontmatter(rawContent);
+        
+        initMarked();
+        
+        const title = frontmatter.title || 'Blog Post';
+        document.title = title + ' - kotadb Blog';
+        
+        if (frontmatter.description) {
+          const metaDesc = document.querySelector('meta[name="description"]');
+          if (metaDesc) metaDesc.content = frontmatter.description;
+        }
+        
+        const headerEl = document.getElementById('post-header');
+        const titleEl = document.getElementById('post-title');
+        const metaEl = document.getElementById('post-meta');
+        
+        titleEl.textContent = title;
+        
+        if (frontmatter.date) {
+          metaEl.textContent = formatDate(frontmatter.date);
+        }
+        
+        headerEl.style.display = 'block';
+        
+        const html = renderMarkdown(content);
+        document.getElementById('post-content').innerHTML = html;
+        
+      } catch (error) {
+        console.error('Failed to load post:', error);
+        showError('An error occurred while loading the post. Please try again later.');
+      }
+    }
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadPost);
+    } else {
+      loadPost();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="kotadb Documentation - Learn how to install, configure, and use kotadb for local code intelligence.">
+  <meta name="keywords" content="kotadb, documentation, code search, code intelligence, SQLite, local-first">
+  <meta name="author" content="kotadb">
+  <meta property="og:title" content="kotadb Documentation">
+  <meta property="og:description" content="Learn how to install, configure, and use kotadb for local code intelligence.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="kotadb Documentation">
+  <meta name="twitter:description" content="Learn how to install, configure, and use kotadb for local code intelligence.">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>Documentation - kotadb</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="../css/main.css">
+  <link rel="stylesheet" href="../css/syntax.css">
+  <style>
+    .docs-layout {
+      display: grid;
+      grid-template-columns: 16rem 1fr;
+      gap: var(--space-xl);
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: var(--space-xl) var(--space-lg);
+      min-height: calc(100vh - var(--header-height) - 8rem);
+    }
+
+    .docs-sidebar {
+      position: sticky;
+      top: calc(var(--header-height) + var(--space-lg));
+      height: fit-content;
+      max-height: calc(100vh - var(--header-height) - var(--space-xl));
+      overflow-y: auto;
+      padding-right: var(--space-md);
+    }
+
+    .docs-sidebar h2 {
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-md);
+    }
+
+    .docs-nav {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .docs-nav li {
+      margin-bottom: var(--space-xs);
+    }
+
+    .docs-nav a {
+      display: block;
+      padding: var(--space-sm) var(--space-md);
+      color: var(--color-text-muted);
+      font-size: var(--font-size-sm);
+      border-radius: var(--border-radius);
+      transition: all var(--transition-fast);
+    }
+
+    .docs-nav a:hover {
+      color: var(--color-text);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .docs-nav a.is-active {
+      color: var(--color-primary);
+      background: rgba(34, 211, 238, 0.1);
+      font-weight: 500;
+    }
+
+    .docs-content {
+      min-width: 0;
+      max-width: 48rem;
+    }
+
+    .docs-content h1 {
+      margin-bottom: var(--space-lg);
+      padding-bottom: var(--space-md);
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .docs-content h2 {
+      margin-top: var(--space-2xl);
+      margin-bottom: var(--space-md);
+    }
+
+    .docs-content h3 {
+      margin-top: var(--space-xl);
+      margin-bottom: var(--space-sm);
+    }
+
+    .docs-content p {
+      color: var(--color-text);
+      line-height: 1.7;
+    }
+
+    .docs-content ul,
+    .docs-content ol {
+      margin-bottom: var(--space-md);
+      padding-left: var(--space-lg);
+    }
+
+    .docs-content li {
+      margin-bottom: var(--space-sm);
+      line-height: 1.6;
+    }
+
+    .docs-content a {
+      text-decoration: underline;
+      text-decoration-color: var(--glass-border);
+      text-underline-offset: 2px;
+    }
+
+    .docs-content a:hover {
+      text-decoration-color: var(--color-primary);
+    }
+
+    .docs-content .heading-anchor {
+      color: var(--color-text-muted);
+      text-decoration: none;
+      margin-right: var(--space-sm);
+      opacity: 0;
+      transition: opacity var(--transition-fast);
+    }
+
+    .docs-content h2:hover .heading-anchor,
+    .docs-content h3:hover .heading-anchor,
+    .docs-content h4:hover .heading-anchor {
+      opacity: 1;
+    }
+
+    .loading {
+      color: var(--color-text-muted);
+      font-style: italic;
+      padding: var(--space-xl);
+    }
+
+    .error-message {
+      padding: var(--space-xl);
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--border-radius-lg);
+    }
+
+    .error-message h2 {
+      color: var(--color-text);
+      margin-top: 0;
+    }
+
+    @media (max-width: 768px) {
+      .docs-layout {
+        grid-template-columns: 1fr;
+        padding: var(--space-md);
+      }
+
+      .docs-sidebar {
+        position: relative;
+        top: 0;
+        max-height: none;
+        padding-right: 0;
+        padding-bottom: var(--space-lg);
+        border-bottom: 1px solid var(--glass-border);
+        margin-bottom: var(--space-lg);
+      }
+
+      .docs-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-sm);
+      }
+
+      .docs-nav li {
+        margin-bottom: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#22d3ee"/>
+              <stop offset="100%" stop-color="#0891b2"/>
+            </linearGradient>
+          </defs>
+          <rect x="8" y="8" width="12" height="64" rx="3" fill="url(#logoGrad)"/>
+          <polygon points="20,40 20,30 50,8 60,8 60,18 32,40" fill="#22d3ee" opacity="0.9"/>
+          <polygon points="20,40 20,50 50,72 60,72 60,62 32,40" fill="#0891b2" opacity="0.85"/>
+          <polygon points="25,40 48,20 55,20 55,27 35,40 55,53 55,60 48,60 25,40" fill="#22d3ee"/>
+        </svg>
+        <span class="logo-text">kota<span class="accent">db</span></span>
+      </a>
+      <nav class="main-nav">
+        <a href="/docs/">Docs</a>
+        <a href="/blog/">Blog</a>
+        <a href="https://github.com/jayminwest/kotadb" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="docs-layout">
+    <aside class="docs-sidebar">
+      <h2>Documentation</h2>
+      <ul class="docs-nav" id="docs-nav">
+        <li><a href="#installation" data-page="installation">Installation</a></li>
+        <li><a href="#configuration" data-page="configuration">Configuration</a></li>
+        <li><a href="#api-reference" data-page="api-reference">API Reference</a></li>
+        <li><a href="#architecture" data-page="architecture">Architecture</a></li>
+      </ul>
+    </aside>
+
+    <article class="docs-content" id="docs-content">
+      <div class="loading">Loading documentation...</div>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+        <p>2026 kotadb. Released under the <a href="https://github.com/jayminwest/kotadb/blob/main/LICENSE">MIT License</a>.</p>
+        <nav class="footer-nav">
+          <a href="https://github.com/jayminwest/kotadb" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/jayminwest/kotadb/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a>
+        </nav>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/lib/marked.min.js"></script>
+  <script type="module">
+    import { initMarked, loadMarkdownInto } from '../js/render.js';
+
+    const DOCS_PAGES = {
+      'installation': {
+        file: 'content/installation.md',
+        title: 'Installation - kotadb Documentation'
+      },
+      'configuration': {
+        file: 'content/configuration.md',
+        title: 'Configuration - kotadb Documentation'
+      },
+      'api-reference': {
+        file: 'content/api-reference.md',
+        title: 'API Reference - kotadb Documentation'
+      },
+      'architecture': {
+        file: 'content/architecture.md',
+        title: 'Architecture - kotadb Documentation'
+      }
+    };
+
+    const DEFAULT_PAGE = 'installation';
+
+    function getCurrentPage() {
+      const hash = window.location.hash.slice(1);
+      if (hash && DOCS_PAGES[hash]) {
+        return hash;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const queryPage = params.get('page');
+      if (queryPage && DOCS_PAGES[queryPage]) {
+        return queryPage;
+      }
+
+      return DEFAULT_PAGE;
+    }
+
+    function updateActiveLink(page) {
+      const navLinks = document.querySelectorAll('#docs-nav a');
+      navLinks.forEach(link => {
+        const linkPage = link.dataset.page;
+        if (linkPage === page) {
+          link.classList.add('is-active');
+          link.setAttribute('aria-current', 'page');
+        } else {
+          link.classList.remove('is-active');
+          link.removeAttribute('aria-current');
+        }
+      });
+    }
+
+    async function loadPage(page) {
+      const pageConfig = DOCS_PAGES[page];
+      if (!pageConfig) {
+        page = DEFAULT_PAGE;
+      }
+
+      const config = DOCS_PAGES[page];
+      
+      const newUrl = `${window.location.pathname}#${page}`;
+      if (window.location.hash !== `#${page}`) {
+        history.pushState({ page }, config.title, newUrl);
+      }
+
+      document.title = config.title;
+      updateActiveLink(page);
+
+      try {
+        await loadMarkdownInto(config.file, '#docs-content', {
+          updateTitle: false
+        });
+      } catch (error) {
+        // Error handled by loadMarkdownInto
+      }
+    }
+
+    function init() {
+      initMarked();
+
+      const navLinks = document.querySelectorAll('#docs-nav a');
+      navLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const page = link.dataset.page;
+          loadPage(page);
+        });
+      });
+
+      window.addEventListener('popstate', (e) => {
+        const page = e.state?.page || getCurrentPage();
+        loadPage(page);
+      });
+
+      loadPage(getCurrentPage());
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+  <script type="module" src="../js/main.js"></script>
+</body>
+</html>

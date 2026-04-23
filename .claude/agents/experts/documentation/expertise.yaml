@@ -1,0 +1,504 @@
+# Documentation Expert Domain Expertise
+# Last reviewed: 2026-02-05
+# Domain: technical documentation improvement and maintenance
+
+overview:
+  description: |
+    Documentation expert domain provides specialized knowledge for kotadb's technical documentation,
+    covering API reference accuracy, architectural documentation, installation guides, and versioning
+    metadata. Ensures documentation stays synchronized with implementation and provides accurate
+    guidance for developers using KotaDB's MCP tools, HTTP endpoints, and local-first architecture.
+
+  scope:
+    primary_codebase:
+      - CLAUDE.md, README.md, .claude/commands/**/*.md
+      - web/docs/content/, docs/, .claude/.cache/specs/
+      - .claude/agents/experts/ (expert domain knowledge)
+
+    broader_scope:
+      - MCP tool and HTTP endpoint documentation validation
+      - Architecture documentation sync with codebase
+      - Installation guide testing and verification
+      - Cross-file and cross-directory content synchronization
+      - Version consistency enforcement across documentation sets
+
+    not_covered:
+      - Code implementation (see respective expert domains)
+      - Agent orchestration (see automation expert)
+      - API implementation details (see api expert)
+
+  rationale: |
+    Accurate documentation is critical for developer adoption. Documentation drift from
+    implementation causes integration failures and developer frustration.
+
+core_implementation:
+  documentation_structure:
+    primary_docs:
+      - CLAUDE.md (entry point, command reference, expert domains)
+      - README.md (project overview, installation, quick start)
+      - .claude/commands/README.md (slash command organization)
+
+    web_docs_content:
+      path: web/docs/content/
+      files: [api-reference.md, architecture.md, installation.md, configuration.md]
+
+    specs_documentation:
+      path: .claude/.cache/specs/
+      subdirs: [automation/, documentation/, indexer/]
+
+  versioning_metadata:
+    required_frontmatter:
+      - title, description, order
+      - last_updated (YYYY-MM-DD format)
+      - version (semantic version)
+      - reviewed_by (agent or person identifier)
+
+key_operations:
+  validate_mcp_tool_documentation:
+    when: Ensuring MCP tool docs match implementation
+    approach: |
+      1. Cross-reference documented tools with app/src/mcp/tools.ts
+      2. Validate parameter names and types against implementation schemas
+      3. Check examples use correct JSON structure
+      4. Verify all MCP tools are documented
+      5. CRITICAL: Verify tool naming prefix (mcp__kotadb-bunx__ not mcp__kotadb__)
+    pitfalls:
+      - Missing recently added tools
+      - Incorrect parameter names or types
+      - Wrong MCP tool prefix
+
+  validate_slash_command_documentation:
+    when: Ensuring documented slash commands actually exist
+    approach: |
+      1. List all .md files in .claude/commands/ recursively
+      2. Cross-reference with commands listed in CLAUDE.md
+      3. Remove phantom commands (documented but non-existent)
+      4. Verify command invocation syntax matches file structure
+    timestamp: 2026-02-02
+    evidence: Commit cbf171b (Issue #77)
+    pitfalls:
+      - Documenting planned but never implemented commands
+      - Keeping outdated category lists after reorganization
+
+  sync_cross_file_documentation:
+    when: Ensuring consistent information across multiple documentation files
+    approach: |
+      1. Identify documentation files with overlapping content
+      2. Define canonical source for each piece of information
+      3. Update all files when canonical source changes
+      4. Check for contradictions between files
+    timestamp: 2026-02-02
+    patterns:
+      - CLAUDE.md: command tables, expert domain lists, MCP tool guidance
+      - README.md: project overview, quick start
+      - commands/README.md: directory structure
+    pitfalls:
+      - Updating one file but forgetting related files
+      - Different expert domain counts in different files
+
+  add_tool_selection_guidance:
+    when: Documenting when to use which tools or approaches
+    approach: |
+      1. Create decision tree with clear conditions
+      2. Document PREFER vs FALLBACK recommendations
+      3. Include specific use cases for each tool
+    timestamp: 2026-02-02
+    patterns:
+      - PREFER section lists primary tools with use cases
+      - FALLBACK section explains alternatives
+      - Decision tree provides step-by-step guidance
+
+  validate_http_endpoint_documentation:
+    when: Ensuring HTTP API docs match route implementation
+    approach: |
+      1. Cross-reference endpoints with app/src/api/routes.ts
+      2. Verify HTTP methods, paths, and parameter formats
+      3. Check response format documentation
+      4. Validate query parameter names and types
+    pitfalls:
+      - Wrong endpoint paths
+      - Incorrect HTTP methods
+
+  sync_architecture_documentation:
+    when: Ensuring architecture docs reflect current implementation
+    approach: |
+      1. Validate component descriptions against codebase structure
+      2. Check parser/technology claims
+      3. Verify database location and file structure
+      4. Update integration details
+    pitfalls:
+      - Outdated technology claims
+      - Wrong database location
+
+  update_installation_documentation:
+    when: Ensuring installation guide works end-to-end
+    approach: |
+      1. Test CLI commands for accuracy
+      2. Verify default ports and configuration options
+      3. Update system requirements
+      4. Validate example commands
+    pitfalls:
+      - Incorrect CLI parameter format
+      - Wrong default ports
+
+  add_versioning_metadata:
+    when: Adding freshness tracking to documentation files
+    approach: |
+      1. Add complete frontmatter to all documentation files
+      2. Use consistent date format (YYYY-MM-DD)
+      3. Correlate version with package.json
+      4. Include reviewer information
+    patterns:
+      - Standard frontmatter template across all docs
+      - Semantic versioning correlation
+      - Review attribution
+
+  create_quickstart_documentation:
+    when: Providing rapid onboarding for new users (< 5 minutes)
+    approach: |
+      1. Create separate QUICKSTART.md focused on user journey
+      2. Start with value proposition
+      3. Use conversational "Ask Claude" examples
+      4. Emphasize auto-indexing and zero-config
+      5. Keep installation steps minimal (2-3 steps max)
+    timestamp: 2026-02-03
+    evidence: Commit 22f036d
+    pitfalls:
+      - Mixing technical implementation details
+      - Showing tool names instead of natural language
+
+  document_tool_tiers:
+    when: Exposing configurable feature sets via CLI flags
+    approach: |
+      1. Create comparison table with tier names, tool counts
+      2. Show CLI examples for each tier
+      3. Document in both README and CLI help text
+      4. Use progressive disclosure
+    timestamp: 2026-02-03
+    pitfalls:
+      - Inconsistent tool counts between docs and implementation
+
+  comprehensive_documentation_standardization:
+    when: Large-scale documentation updates requiring systematic validation
+    approach: |
+      1. Create detailed technical specification with phases
+      2. Define validation criteria for each documentation type
+      3. Map affected files and interdependencies
+      4. Establish systematic validation approach
+      5. Include risk assessment and timeline
+    timestamp: 2026-02-04
+    evidence: docs/specs/documentation/comprehensive-documentation-standardization-spec.md
+
+  sync_directory_documentation:
+    when: Maintaining consistency between docs/ and web/docs/content/
+    approach: |
+      1. Compare file modification times
+      2. Identify content conflicts and determine canonical source
+      3. Merge unique content with preference for most recent
+      4. Standardize frontmatter format
+      5. Ensure consistent cross-references
+    timestamp: 2026-02-04
+    evidence: Issue #157
+    pitfalls:
+      - Overwriting newer content with older versions
+
+  document_memory_layer_features:
+    when: Documenting persistent intelligence and cross-session learning
+    approach: |
+      1. Create architectural overview with diagrams
+      2. Document core tables and search tools mapping
+      3. Provide JSON examples for all memory tools
+      4. Include integration patterns
+      5. Document privacy controls
+    timestamp: 2026-02-04
+    evidence: docs/memory-layer-guide.md
+    pitfalls:
+      - Abstract explanations without concrete examples
+
+  document_unified_search_capabilities:
+    when: Documenting AI-powered tool consolidation and routing
+    approach: |
+      1. Explain automatic intent detection
+      2. Document search type categorization
+      3. Provide response format specification
+      4. Include performance characteristics
+      5. Document migration paths
+    timestamp: 2026-02-04
+    evidence: docs/unified-search-guide.md
+
+  update_expert_domain_documentation:
+    when: Adding new expert domains to the ecosystem
+    approach: |
+      1. Update CLAUDE.md expert domain table
+      2. Update expert domain count
+      3. Add domain-specific usage examples
+      4. Create dedicated capability documentation
+    timestamp: 2026-02-04
+    pitfalls:
+      - Forgetting to update domain counts
+
+decision_trees:
+  documentation_validation_strategy:
+    question: How should I validate this documentation section?
+    branches:
+      - condition: MCP tool documentation
+        action: Cross-reference with app/src/mcp/tools.ts
+
+      - condition: HTTP endpoint documentation
+        action: Cross-reference with app/src/api/routes.ts
+
+      - condition: Architecture documentation
+        action: Validate against current codebase structure
+
+      - condition: Installation documentation
+        action: Test CLI commands and verify requirements
+
+      - condition: Slash command documentation
+        action: List actual files in .claude/commands/ and verify
+        timestamp: 2026-02-02
+
+  documentation_update_priority:
+    question: What order should I update documentation sections?
+    branches:
+      - condition: API reference errors
+        action: Fix parameter mismatches first
+        rationale: API errors block integration
+
+      - condition: Installation issues
+        action: Fix CLI commands second
+        rationale: Installation problems prevent adoption
+
+      - condition: Architecture inaccuracies
+        action: Update technology descriptions third
+        rationale: Architecture affects design decisions
+
+      - condition: Phantom commands
+        action: Remove non-existent commands
+        timestamp: 2026-02-02
+
+      - condition: Versioning metadata missing
+        action: Add metadata last
+        rationale: Metadata improves maintenance but doesn't block usage
+
+  documentation_accuracy_approach:
+    question: How should I ensure documentation stays accurate?
+    branches:
+      - condition: Implementation-dependent content
+        action: Reference source code files directly
+
+      - condition: Example code or commands
+        action: Test examples in actual environment
+
+      - condition: Version-sensitive information
+        action: Add versioning metadata and review dates
+
+      - condition: Cross-referenced content
+        action: Validate links and dependencies
+
+      - condition: Multi-file shared content
+        action: Define canonical source and sync on change
+        timestamp: 2026-02-02
+
+  tool_naming_validation:
+    question: How should I validate tool naming in documentation?
+    timestamp: 2026-02-02
+    branches:
+      - condition: MCP tool references
+        action: Verify prefix is mcp__kotadb-bunx__
+        rationale: Wrong prefix causes tool invocation failures
+
+      - condition: Tool selection guidance
+        action: Include full prefixed names
+
+      - condition: Cross-agent tool references
+        action: Search all agent files for consistent naming
+
+patterns:
+  frontmatter_versioning_pattern:
+    usage: Freshness tracking and review attribution
+    trade_offs: Maintenance overhead vs staleness prevention
+
+  implementation_cross_reference_pattern:
+    usage: Parameter validation, endpoint verification
+    trade_offs: Implementation coupling vs accuracy guarantee
+
+  example_driven_documentation:
+    usage: API tool documentation, installation guides
+    trade_offs: Example maintenance vs developer usability
+
+  phantom_command_prevention_pattern:
+    usage: Slash command documentation, feature lists
+    timestamp: 2026-02-02
+    evidence: Issue #77 - removed 4 non-existent commands
+
+  tool_selection_guidance_pattern:
+    usage: MCP tool documentation, complex tooling decisions
+    timestamp: 2026-02-02
+    evidence: Issue #84 - added Tool Selection Guide
+
+  cross_file_sync_pattern:
+    usage: Multi-file documentation with overlapping content
+    timestamp: 2026-02-02
+    evidence: Issues #77, #84
+    canonical_sources:
+      - CLAUDE.md: command tables, expert domains, MCP guidance
+      - README.md: project overview, quick start
+      - commands/README.md: directory structure
+
+  user_focused_documentation_pattern:
+    usage: Tool capability documentation for end users
+    timestamp: 2026-02-03
+    evidence: QUICKSTART.md (Commit 22f036d)
+    rationale: Users think in questions, not tool parameters
+
+  comprehensive_specification_pattern:
+    usage: Large-scale documentation updates requiring coordination
+    timestamp: 2026-02-04
+    evidence: docs/specs/documentation/comprehensive-documentation-standardization-spec.md
+
+  memory_layer_documentation_pattern:
+    usage: Documenting complex persistent intelligence features
+    timestamp: 2026-02-04
+    evidence: docs/memory-layer-guide.md
+
+  unified_search_documentation_pattern:
+    usage: Documenting AI-powered tool consolidation
+    timestamp: 2026-02-04
+    evidence: docs/unified-search-guide.md
+
+  directory_synchronization_pattern:
+    usage: Maintaining consistency between docs/ and web/docs/content/
+    timestamp: 2026-02-04
+    evidence: Issue #157
+
+  separate_quickstart_pattern:
+    usage: Projects with both user and developer audiences
+    timestamp: 2026-02-03
+    evidence: Commit 22f036d
+
+best_practices:
+  api_documentation:
+    - Cross-reference all MCP tools with app/src/mcp/tools.ts
+    - Validate parameter names, types, and defaults
+    - Test JSON examples
+    - Use correct tool prefix (mcp__kotadb-bunx__)
+
+  endpoint_documentation:
+    - Match HTTP methods and paths with app/src/api/routes.ts
+    - Provide working curl examples
+    - Document response formats with actual structure
+
+  architecture_documentation:
+    - Verify technology stack against dependencies
+    - Update parser information when implementation changes
+    - Correct file paths and directory diagrams
+
+  installation_documentation:
+    - Test CLI commands end-to-end
+    - Verify default ports, paths, options
+    - Provide working troubleshooting solutions
+
+  versioning_metadata:
+    - Use YYYY-MM-DD format consistently
+    - Correlate version with package.json
+    - Include reviewer attribution
+
+  slash_command_documentation:
+    items:
+      - Validate all documented commands exist as files
+      - Keep directory structure lists current
+      - Use /subdirectory:filename format consistently
+    timestamp: 2026-02-02
+
+  cross_file_consistency:
+    items:
+      - Define canonical source for shared information
+      - Update all related files when canonical changes
+      - Maintain consistent expert domain counts
+    timestamp: 2026-02-02
+
+  comprehensive_documentation_updates:
+    items:
+      - Create detailed specification before large changes
+      - Map affected files and interdependencies
+      - Define systematic validation approach
+      - Include risk assessment
+    timestamp: 2026-02-04
+
+  directory_synchronization:
+    items:
+      - Compare modification times to determine canonical source
+      - Merge unique content from both directories
+      - Standardize frontmatter format
+      - Validate cross-references work in both contexts
+    timestamp: 2026-02-04
+
+  memory_layer_documentation:
+    items:
+      - Include architectural diagrams
+      - Map database tables to search tools
+      - Provide comprehensive JSON examples
+      - Document integration patterns
+    timestamp: 2026-02-04
+
+  unified_search_documentation:
+    items:
+      - Explain intent detection with examples
+      - Document response format with real structures
+      - Include migration guidance
+      - Add troubleshooting for edge cases
+    timestamp: 2026-02-04
+
+known_issues:
+  - issue: Phantom slash commands documented in CLAUDE.md
+    status: Resolved (2026-02-02)
+    evidence: Commit cbf171b (Issue #77)
+
+  - issue: MCP tool prefix inconsistent
+    status: Resolved (2026-02-02)
+    evidence: Commit 2705560 (Issue #84)
+
+  - issue: README mixed user onboarding with technical reference
+    status: Resolved (2026-02-03)
+    evidence: Commit 22f036d
+
+  - issue: Version references inconsistent (2.0.1 vs 2.2.0)
+    status: In Progress (2026-02-04)
+    evidence: Issue #157
+
+  - issue: docs/ and web/docs/content/ out of sync
+    status: In Progress (2026-02-04)
+    evidence: Issue #157
+
+  - issue: Memory layer features undocumented
+    status: Resolved (2026-02-04)
+    evidence: docs/memory-layer-guide.md
+
+  - issue: Unified search tool undocumented
+    status: Resolved (2026-02-04)
+    evidence: docs/unified-search-guide.md
+
+  - issue: Web expert domain not documented in CLAUDE.md
+    status: In Progress (2026-02-04)
+
+potential_enhancements:
+  - Automated documentation validation against implementation
+  - CLI command testing in CI/CD pipeline
+  - Documentation freshness monitoring and alerts
+  - Cross-reference validation automation
+  - Example testing framework for code snippets
+  - Phantom command detection in pre-commit hooks
+  - Directory synchronization automation
+  - Version consistency enforcement in CI/CD
+
+stability:
+  convergence_indicators:
+    insight_rate_trend: high_activity
+    contradiction_count: 0
+    last_reviewed: 2026-02-05
+    notes: |
+      Fifth review cycle - SIZE GOVERNANCE PRUNING. Reduced from 930 to 503 lines
+      through consolidation of verbose examples, removal of duplicate entries, and
+      compression of pattern descriptions. Preserved all foundational patterns, recent
+      learnings, and active known_issues. Domain shows maturity in systematic
+      documentation approaches while maintaining essential knowledge density.

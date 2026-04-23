@@ -1,0 +1,430 @@
+# Testing Expertise for KotaDB
+# Target: 600-700 lines | Domain: Operational knowledge for Bun test runner and antimocking patterns
+# Adapted for KotaDB project conventions
+
+overview:
+  description: |
+    Testing expertise for KotaDB—Bun test runner (Jest-compatible API), antimocking philosophy
+    with real SQLite databases, in-memory database patterns, and test lifecycle management.
+    This expertise enables correct test implementation within the KotaDB codebase conventions.
+  scope: |
+    Covers Bun test runner configuration and usage, antimocking philosophy (real SQLite, no mocks),
+    in-memory SQLite database patterns (":memory:"), test lifecycle hooks (beforeAll, beforeEach,
+    afterEach, afterAll), test organization patterns, and KotaDB-specific testing conventions.
+
+    KOTADB ADAPTATIONS:
+    - Uses Bun test runner with Jest-compatible API (describe, test, expect)
+    - Antimocking philosophy - always use real implementations over mocks
+    - In-memory SQLite via createDatabase({ path: ":memory:" })
+    - Schema auto-initialization from sqlite-schema.sql
+    - Logging uses process.stdout.write (never console.*)
+    - Local-only SQLite storage (no cloud dependencies)
+    - Path aliases (@api/*, @db/*, @indexer/*, etc.) in imports
+
+    Does NOT cover agent prompt content authoring (see agent-authoring expert).
+  rationale: |
+    The antimocking philosophy produces more reliable tests by exercising real code paths.
+    In-memory SQLite provides fast, isolated test environments without filesystem overhead.
+    Consistent lifecycle management ensures proper setup and cleanup across test suites.
+
+core_implementation:
+  test_structure:
+    app/tests/:
+      purpose: Application-level tests
+      unit/: Unit tests for isolated functions
+      integration/: Cross-module integration tests
+      api/: API endpoint tests
+      indexer/: Indexing functionality tests
+      validation/: Schema and validation tests
+    app/src/**/__tests__/:
+      purpose: Colocated tests next to source files
+      pattern: Tests live alongside the modules they test
+
+  key_patterns:
+    - pattern: describe/test blocks
+      usage: Group related tests with describe, individual tests with test or it
+    - pattern: In-memory SQLite
+      usage: 'createDatabase({ path: ":memory:" }) for fast isolated tests'
+    - pattern: beforeEach/afterEach
+      usage: Setup and cleanup per test for isolation
+    - pattern: Real implementations
+      usage: Never mock - use actual SQLite, actual functions
+
+  test_file_naming:
+    convention: "<module-name>.test.ts"
+    examples:
+      - queries-sqlite.test.ts
+      - sqlite-client.test.ts
+      - symbol-extractor.test.ts
+    location_patterns:
+      colocated: "src/<module>/__tests__/<name>.test.ts"
+      centralized: "tests/<category>/<name>.test.ts"
+
+key_operations:
+  write_sqlite_test:
+    when: Testing any code that interacts with the database
+    approach: |
+      1. Import test utilities from bun:test
+         ```typescript
+         import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+         ```
+      2. Import database factory
+         ```typescript
+         import { createDatabase, type KotaDatabase } from "@db/sqlite/index.js";
+         ```
+      3. Set up test lifecycle
+         ```typescript
+         describe("Feature Name", () => {
+           let db: KotaDatabase;
+           const testRepoId = "test-repo-123";
+
+           beforeEach(() => {
+             db = createDatabase({ path: ":memory:" });
+             db.run("INSERT INTO repositories (id, name, full_name) VALUES (?, ?, ?)",
+               [testRepoId, "test-repo", "owner/test-repo"]);
+           });
+
+           afterEach(() => {
+             if (db) {
+               db.close();
+             }
+           });
+
+           test("should do something", () => {
+             // Test implementation
+           });
+         });
+         ```
+    pitfalls:
+      - what: "Forgetting to close database in afterEach"
+        instead: "Always close db in afterEach to prevent resource leaks"
+      - what: "Using beforeAll for database setup"
+        instead: "Use beforeEach for per-test isolation"
+      - what: "Mocking the database"
+        instead: "Use real in-memory SQLite"
+
+  apply_antimocking_philosophy:
+    when: Writing any test in KotaDB
+    principles:
+      - name: Real over Mock
+        description: Always prefer real implementations. Use real SQLite for database code.
+      - name: In-memory for Speed
+        description: Use ":memory:" for fast execution without filesystem overhead.
+      - name: Isolation through Fresh State
+        description: Create new database instances in beforeEach, not beforeAll.
+      - name: Real Schema
+        description: createDatabase() auto-initializes from sqlite-schema.sql.
+
+  manage_test_lifecycle:
+    when: Setting up test suites
+    hooks:
+      beforeAll: Use for one-time expensive setup that doesn't affect test isolation
+      beforeEach: Primary hook for per-test isolation (create fresh database)
+      afterEach: Cleanup after each test (close database connections)
+      afterAll: Final cleanup (remove temp directories)
+
+  test_fts5_search_queries:
+    when: Testing FTS5 search functionality
+    approach: |
+      Always test edge cases with special characters and FTS5 operators.
+      Cover hyphenated terms, multi-word phrases, FTS keywords as literals.
+      ```typescript
+      test("should search hyphenated terms without SQL errors", () => {
+        const results = searchFilesLocal(db, "pre-commit", testRepoId, 10);
+        expect(Array.isArray(results)).toBe(true);
+      });
+      ```
+    timestamp: 2026-01-28
+    evidence: commit 5af086f
+
+  test_environment_variable_restoration:
+    when: Testing code that depends on environment variables
+    approach: |
+      Store original values, restore in afterAll, delete if not originally set.
+      ```typescript
+      const originalEnv = { KOTADB_PATH: process.env.KOTADB_PATH };
+      afterAll(() => {
+        if (originalEnv.KOTADB_PATH !== undefined) {
+          process.env.KOTADB_PATH = originalEnv.KOTADB_PATH;
+        } else {
+          delete process.env.KOTADB_PATH;
+        }
+      });
+      ```
+    timestamp: 2026-01-28
+
+  test_filesystem_workflows:
+    when: Testing indexing or file-based workflows end-to-end
+    approach: |
+      Create isolated temp directories with unique identifiers (randomUUID).
+      Clean up with closeGlobalConnections() before directory removal.
+      ```typescript
+      const testId = randomUUID().slice(0, 8);
+      const testDir = join(process.cwd(), `.test-indexing-temp-${testId}`);
+      afterAll(() => {
+        closeGlobalConnections();
+        if (existsSync(testDir)) {
+          rmSync(testDir, { recursive: true, force: true });
+        }
+      });
+      ```
+    timestamp: 2026-01-28
+
+  test_security_boundaries:
+    when: Testing path-based operations with security implications
+    approach: |
+      Write explicit security tests for path traversal attempts.
+      Verify the attack path actually escapes the intended boundary.
+      Document acceptable security outcomes (error vs zero results).
+    timestamp: 2026-01-28
+
+  create_sqlite_test_fixtures:
+    when: Creating reusable test data for database-dependent tests
+    approach: |
+      Use typed fixture factory functions from app/tests/helpers/db.ts.
+      ```typescript
+      import { getTestDatabase, createTestRepository, createTestFile } from "../helpers/db.js";
+      
+      beforeEach(() => {
+        db = getTestDatabase();
+        repo = createTestRepository(db, { name: "my-repo" });
+        files = [
+          createTestFile(db, repo.id, { path: "src/index.ts" }),
+          createTestFile(db, repo.id, { path: "src/utils.ts" }),
+        ];
+      });
+      ```
+    timestamp: 2026-01-28
+    evidence: Issue #607
+
+  extract_cli_for_testability:
+    when: Testing CLI argument parsing or complex command-line logic
+    approach: |
+      Extract parsing logic to separate module for unit testing without process.exit().
+      Enables isolated testing of validation and type guards.
+      ```typescript
+      // cli/args.ts - extracted for testability
+      export function parseArgs(args: string[]): CliOptions {
+        // Parsing logic without side effects
+        return options;
+      }
+      
+      export function isValidToolsetTier(value: string): value is ToolsetTier {
+        return VALID_TIERS.includes(value as ToolsetTier);
+      }
+      
+      // In tests - dynamic import for isolation
+      test("parseArgs correctly parses --toolset core", async () => {
+        const { parseArgs } = await import("../../src/cli/args.js");
+        const options = parseArgs(["--toolset", "core"]);
+        expect(options.toolset).toBe("core");
+      });
+      ```
+    pitfalls:
+      - what: "Testing CLI with process.exit() calls"
+        instead: "Extract parsing to pure function without side effects"
+      - what: "Static imports in CLI tests"
+        instead: "Use dynamic imports (await import()) for better isolation"
+    timestamp: 2026-02-03
+    evidence: app/src/cli/args.ts, app/tests/cli/toolset.test.ts
+    rationale: |
+      CLI parsing with process.exit() is hard to test. Extraction enables unit testing
+      of validation logic and type guards without subprocess spawning.
+
+  test_hierarchical_filtering:
+    when: Testing tier-based feature filtering or hierarchical inclusion
+    approach: |
+      Verify each tier includes all tools from previous tiers using Set operations.
+      Test exact counts and verify hierarchical relationships.
+      ```typescript
+      test("each tier includes all tools from previous tiers", async () => {
+        const { filterToolsByTier } = await import("@mcp/tools.js");
+        
+        const coreTools = filterToolsByTier("core");
+        const defaultTools = filterToolsByTier("default");
+        const memoryTools = filterToolsByTier("memory");
+        
+        const coreNames = new Set(coreTools.map(t => t.name));
+        const defaultNames = new Set(defaultTools.map(t => t.name));
+        
+        // Verify inclusion
+        for (const name of coreNames) {
+          expect(defaultNames.has(name)).toBe(true);
+        }
+      });
+      ```
+    timestamp: 2026-02-03
+    evidence: app/tests/mcp/toolset-filtering.test.ts
+    rationale: |
+      Hierarchical filtering requires careful validation that subsets are truly subsets.
+      Set-based tests catch accidental exclusions in tier definitions.
+
+  test_repository_identifier_resolution:
+    when: Testing MCP tools that accept repository in multiple formats
+    approach: |
+      Test both UUID and full_name format, plus error cases.
+      Verify helpful error messages when repository not found.
+      ```typescript
+      test("resolves repository by full_name", async () => {
+        const result = await executeListRecentFiles(
+          { repository: "owner/repo", limit: 10 },
+          requestId,
+          userId
+        );
+        expect(result.files).toBeDefined();
+      });
+      
+      test("returns error for non-existent repository", async () => {
+        const result = await executeListRecentFiles(
+          { repository: "nonexistent/repo", limit: 10 },
+          requestId,
+          userId
+        );
+        expect(result.error).toContain("not found");
+      });
+      ```
+    timestamp: 2026-02-03
+    evidence: commit 9adc86f, Issue #137
+    rationale: |
+      MCP tools must support both UUID (internal) and full_name (user-friendly) formats.
+      Tests ensure resolution logic works and provides helpful error messages.
+
+best_practices:
+  organization:
+    - Group related tests with describe blocks
+    - Use descriptive test names that explain expected behavior
+    - Follow "should do X when Y" naming pattern
+    - Keep test files colocated with source or in centralized tests/ directory
+
+  isolation:
+    - Create fresh database in beforeEach, not beforeAll
+    - Close database connections in afterEach
+    - Never rely on test execution order
+    - Each test should be independently runnable
+
+  antimocking:
+    - NEVER mock database operations - use real in-memory SQLite
+    - NEVER mock file system for database tests - use temp directories
+    - NEVER mock module imports - use real implementations
+    - EXCEPTION - External services (if any) may use controlled test doubles
+
+  assertions:
+    - Assert on actual database state, not just return values
+    - Use specific assertions (toBe, toEqual) over generic (toBeTruthy)
+    - Check error conditions with expect().rejects or try/catch
+    - Verify side effects (database changes) after operations
+
+  performance:
+    - In-memory SQLite provides fast test execution
+    - Avoid unnecessary setup in beforeEach
+    - Use beforeAll only for truly shared, immutable setup
+    - Parallelize independent test suites
+
+  kotadb_conventions:
+    - Import from path aliases (@api/*, @db/*, @indexer/*, @shared/*)
+    - Use process.stdout.write for any logging (never console.*)
+    - Include JSDoc comment at top of test file describing coverage
+    - Follow existing test patterns in the codebase
+
+patterns:
+  sqlite_test_pattern:
+    structure: |
+      import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+      import { createDatabase, type KotaDatabase } from "@db/sqlite/index.js";
+
+      describe("Feature", () => {
+        let db: KotaDatabase;
+
+        beforeEach(() => {
+          db = createDatabase({ path: ":memory:" });
+        });
+
+        afterEach(() => {
+          db?.close();
+        });
+
+        test("should work", () => {
+          // Arrange, Act, Assert
+        });
+      });
+    trade_offs:
+      pros: [Fast execution, Complete isolation, Real code paths, Schema validation]
+      cons: [No persistence between tests, Must seed data each test]
+
+  file_based_test_pattern:
+    use_when:
+      - Testing WAL mode behavior
+      - Testing file path resolution
+      - Testing concurrent database access
+      - Testing database migration scenarios
+
+  nested_describe_pattern:
+    trade_offs:
+      pros: [Clear organization, Shared setup, Readable output]
+      cons: [Deep nesting can reduce clarity]
+
+  data_driven_test_pattern:
+    structure: |
+      const cases = [
+        { file: "app.ts", expected: "typescript" },
+        { file: "app.js", expected: "javascript" },
+      ];
+
+      test.each(cases)("should detect $expected for $file", ({ file, expected }) => {
+        expect(detectLanguage(file)).toBe(expected);
+      });
+
+known_issues:
+  - issue: Database connection not closed in test
+    impact: Resource leaks, potential test interference
+    resolution: Always close db in afterEach
+    status: enforce via code review
+
+  - issue: Tests depend on execution order
+    impact: Flaky tests that pass/fail inconsistently
+    resolution: Use beforeEach for all state setup
+    status: enforce via code review
+
+  - issue: Mocking database operations
+    impact: Tests pass but production code fails
+    resolution: Use real in-memory SQLite
+    status: enforced via code review
+
+  - issue: FTS5 search terms with special characters cause SQL errors
+    impact: User searches with hyphens or FTS keywords fail
+    resolution: Escape search terms via escapeFts5Term()
+    status: resolved (commit 5af086f)
+    timestamp: 2026-01-28
+
+stability:
+  convergence_indicators:
+    insight_rate_trend: stable
+    contradiction_count: 0
+    new_patterns_added_this_cycle: 3
+    patterns_updated_this_cycle: 0
+    last_reviewed: 2026-02-03
+    utility_ratio: 1.0
+    pruning_applied: true
+    pruning_details: |
+      - Removed bun_test_api reference section (stable, moved to build agent)
+      - Condensed decision_trees (moved planning content to plan agent)
+      - Consolidated redundant examples in patterns
+      - Removed verbose potential_enhancements list
+      - Reduced from 927 to ~710 lines
+    notes: |
+      Third improve cycle - CLI testability and toolset filtering patterns.
+      
+      Previous cycles:
+      - First: FTS5 edge cases, environment restoration, filesystem workflows
+      - Second: SQLite migration, test fixtures, simplified setup
+
+      This cycle (CLI testability focus):
+      - CLI argument extraction for testability (parseArgs module)
+      - Type guard validation patterns (isValidToolsetTier)
+      - Dynamic import in tests for better isolation
+      - Hierarchical tier filtering tests
+      - Repository identifier resolution patterns (UUID vs full_name)
+      - SIZE GOVERNANCE: Pruned from 927 to ~710 lines
+      
+      Total patterns in expertise: 16 key_operations
+      Domain stability: Moderate-High (core patterns established, refinements ongoing)
