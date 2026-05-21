@@ -19,20 +19,19 @@ updates:
       prefix: "chore(deps)"
       include: "scope"
 
-  # Python dependencies for automation
-  - package-ecosystem: "pip"
+  # Bun/npm dependencies for automation tooling
+  - package-ecosystem: "npm"
     directory: "/automation"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     reviewers:
       - "kotadb/engineering"
     labels:
       - "dependencies"
-      - "security"
     versioning-strategy: "increase"
     commit-message:
       prefix: "chore(deps)"
