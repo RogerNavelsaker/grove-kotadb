@@ -9,7 +9,7 @@
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.32"
+    "@anthropic-ai/claude-code": "^2.1.207"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
