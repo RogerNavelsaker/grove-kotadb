@@ -10,6 +10,8 @@ This guide covers local development setup for KotaDB, with a focus on testing MC
 
 ## Quick Setup
 
+In this workspace, enter the shared development environment with `devenv shell` from the repository root before following these steps.
+
 ```bash
 # Clone the repository
 git clone https://github.com/jayminwest/kotadb.git
