@@ -1,6 +1,6 @@
 { pkgs, ... }:
 {
-  imports = [ /workspace/home/devenv.base.nix ];
+  imports = [ /workspace/common/main/devenv.nix ];
 
   packages = with pkgs; [
     git

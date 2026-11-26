@@ -99,3 +99,4 @@ automation/.data/*
 !automation/.data/.gitkeep
 # Automation worktrees (isolated git working directories)
 automation/.worktrees/
+.direnv/
