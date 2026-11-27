@@ -83,7 +83,7 @@ Example:
 - [ ] Validation commands completed successfully
 - [ ] PR title follows Conventional Commits format
 - [ ] Issue relationships documented (if applicable)
-- [ ] Branch is up to date with `develop`
+- [ ] Branch is up to date with `main`
 
 ## Screenshots / Recordings (Optional)
 
